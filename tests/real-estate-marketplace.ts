@@ -102,4 +102,126 @@ describe("Real Estate Marketplace", () => {
       throw error;
     }
   });
+
+
+  it("Update property price", async () => {
+    // First, ensure we have a property to update
+    const propertyId = "Property123";
+    const initialPrice = new anchor.BN(1000000);
+    const newPrice = new anchor.BN(1500000); // 50% price increase
+    
+    const [propertyPDA] = await PublicKey.findProgramAddress(
+      [Buffer.from("property"), marketplacePDA.toBuffer(), Buffer.from(propertyId)],
+      program.programId
+    );
+  
+    try {
+      // Fetch the current property state to confirm initial price
+      const propertyBefore = await program.account.property.fetch(propertyPDA);
+      expect(propertyBefore.price.toString()).to.equal(initialPrice.toString());
+      
+      // Add a delay to ensure clock advances
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Update only the price
+      const computeBudgetIx = ComputeBudgetProgram.setComputeUnitLimit({
+        units: 400000
+      });
+  
+      const tx = await program.methods
+        .updateProperty(
+          newPrice, // Update price
+          null,     // Don't update metadata URI
+          null      // Don't update active status
+        )
+        .accounts({
+          property: propertyPDA,
+          owner: authority.publicKey,
+        })
+        .preInstructions([computeBudgetIx])
+        .rpc({
+          commitment: "confirmed",
+        });
+  
+      console.log("Update price transaction signature:", tx);
+  
+      // Fetch updated property data
+      const propertyAfter = await program.account.property.fetch(propertyPDA);
+      
+      // Verify the update
+      expect(propertyAfter.price.toString()).to.equal(newPrice.toString());
+      expect(propertyAfter.metadataUri).to.equal(propertyBefore.metadataUri);
+      expect(propertyAfter.isActive).to.equal(propertyBefore.isActive);
+      
+      // Verify timestamp updated
+      expect(propertyAfter.updatedAt.toNumber()).to.be.greaterThan(propertyBefore.updatedAt.toNumber());
+      
+      console.log("✅ Property price updated successfully");
+    } catch (error) {
+      console.error("Failed to update property price:", error);
+      if (error.logs) {
+        console.error("Program logs:", JSON.stringify(error.logs, null, 2));
+      }
+      throw error;
+    }
+  });
+  
+  it("Update property metadata URI", async () => {
+    const propertyId = "Property123";
+    const newMetadataUri = "https://example.com/meta/updated_p123.json";
+    
+    const [propertyPDA] = await PublicKey.findProgramAddress(
+      [Buffer.from("property"), marketplacePDA.toBuffer(), Buffer.from(propertyId)],
+      program.programId
+    );
+  
+    try {
+      // Fetch the current property state
+      const propertyBefore = await program.account.property.fetch(propertyPDA);
+      
+      // Add a delay to ensure clock advances
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Update only the metadata URI
+      const computeBudgetIx = ComputeBudgetProgram.setComputeUnitLimit({
+        units: 400000
+      });
+  
+      const tx = await program.methods
+        .updateProperty(
+          null,           // Don't update price
+          newMetadataUri, // Update metadata URI
+          null            // Don't update active status
+        )
+        .accounts({
+          property: propertyPDA,
+          owner: authority.publicKey,
+        })
+        .preInstructions([computeBudgetIx])
+        .rpc({
+          commitment: "confirmed",
+        });
+  
+      console.log("Update metadata URI transaction signature:", tx);
+  
+      // Fetch updated property data
+      const propertyAfter = await program.account.property.fetch(propertyPDA);
+      
+      // Verify the update
+      expect(propertyAfter.metadataUri).to.equal(newMetadataUri);
+      expect(propertyAfter.price.toString()).to.equal(propertyBefore.price.toString());
+      expect(propertyAfter.isActive).to.equal(propertyBefore.isActive);
+      
+      // Verify timestamp updated
+      expect(propertyAfter.updatedAt.toNumber()).to.be.greaterThan(propertyBefore.updatedAt.toNumber());
+      
+      console.log("✅ Property metadata URI updated successfully");
+    } catch (error) {
+      console.error("Failed to update property metadata URI:", error);
+      if (error.logs) {
+        console.error("Program logs:", JSON.stringify(error.logs, null, 2));
+      }
+      throw error;
+    }
+  });
 });
