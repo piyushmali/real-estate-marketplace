@@ -224,4 +224,154 @@ describe("Real Estate Marketplace", () => {
       throw error;
     }
   });
+  it("Update property status", async () => {
+    const propertyId = "Property123";
+    const newActiveStatus = false; // Deactivate the property
+    
+    const [propertyPDA] = await PublicKey.findProgramAddress(
+      [Buffer.from("property"), marketplacePDA.toBuffer(), Buffer.from(propertyId)],
+      program.programId
+    );
+  
+    try {
+      // Fetch the current property state
+      const propertyBefore = await program.account.property.fetch(propertyPDA);
+      
+      // Add a delay to ensure clock advances
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Update only the active status
+      const computeBudgetIx = ComputeBudgetProgram.setComputeUnitLimit({
+        units: 400000
+      });
+  
+      const tx = await program.methods
+        .updateProperty(
+          null,             // Don't update price
+          null,             // Don't update metadata URI
+          newActiveStatus   // Update active status
+        )
+        .accounts({
+          property: propertyPDA,
+          owner: authority.publicKey,
+        })
+        .preInstructions([computeBudgetIx])
+        .rpc({
+          commitment: "confirmed",
+        });
+  
+      console.log("Update property status transaction signature:", tx);
+  
+      // Fetch updated property data
+      const propertyAfter = await program.account.property.fetch(propertyPDA);
+      
+      // Verify the update
+      expect(propertyAfter.isActive).to.equal(newActiveStatus);
+      expect(propertyAfter.price.toString()).to.equal(propertyBefore.price.toString());
+      expect(propertyAfter.metadataUri).to.equal(propertyBefore.metadataUri);
+      
+      // Verify timestamp updated
+      expect(propertyAfter.updatedAt.toNumber()).to.be.greaterThan(propertyBefore.updatedAt.toNumber());
+      
+      console.log("✅ Property status updated successfully");
+      
+      // Re-activate the property for subsequent tests
+      await program.methods
+        .updateProperty(
+          null,
+          null,
+          true  // Set active back to true
+        )
+        .accounts({
+          property: propertyPDA,
+          owner: authority.publicKey,
+        })
+        .rpc({
+          commitment: "confirmed",
+        });
+        
+    } catch (error) {
+      console.error("Failed to update property status:", error);
+      if (error.logs) {
+        console.error("Program logs:", JSON.stringify(error.logs, null, 2));
+      }
+      throw error;
+    }
+  });
+  
+  it("Make offer on property", async () => {
+    const propertyId = "Property123";
+    const offerAmount = new anchor.BN(900000); // 90% of listing price
+    
+    // Create a new keypair for the buyer
+    const buyer = anchor.web3.Keypair.generate();
+    
+    // Airdrop some SOL to the buyer to pay for transaction fees
+    const signature = await provider.connection.requestAirdrop(
+      buyer.publicKey,
+      2 * LAMPORTS_PER_SOL
+    );
+    await provider.connection.confirmTransaction(signature);
+    
+    const [propertyPDA] = await PublicKey.findProgramAddress(
+      [Buffer.from("property"), marketplacePDA.toBuffer(), Buffer.from(propertyId)],
+      program.programId
+    );
+    
+    const [offerPDA] = await PublicKey.findProgramAddress(
+      [Buffer.from("offer"), propertyPDA.toBuffer(), buyer.publicKey.toBuffer()],
+      program.programId
+    );
+    
+    // Current time + 1 day for expiration (in seconds)
+    const expirationTime = new anchor.BN(
+      Math.floor(Date.now() / 1000) + 86400
+    );
+    
+    try {
+      // Make an offer as the buyer
+      const computeBudgetIx = ComputeBudgetProgram.setComputeUnitLimit({
+        units: 400000
+      });
+      
+      const tx = await program.methods
+        .makeOffer(
+          offerAmount,
+          expirationTime
+        )
+        .accounts({
+          property: propertyPDA,
+          offer: offerPDA,
+          buyer: buyer.publicKey,
+          systemProgram: anchor.web3.SystemProgram.programId,
+          rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+        })
+        .preInstructions([computeBudgetIx])
+        .signers([buyer])
+        .rpc({
+          commitment: "confirmed",
+        });
+      
+      console.log("Make offer transaction signature:", tx);
+      
+      // Fetch the offer data
+      const offerAccount = await program.account.offer.fetch(offerPDA);
+      
+      // Verify the offer details
+      expect(offerAccount.buyer.toString()).to.equal(buyer.publicKey.toString());
+      expect(offerAccount.property.toString()).to.equal(propertyPDA.toString());
+      expect(offerAccount.amount.toString()).to.equal(offerAmount.toString());
+      expect(offerAccount.status.pending).to.exist;  // Check if status is Pending
+      expect(offerAccount.expirationTime.toString()).to.equal(expirationTime.toString());
+      
+      console.log("✅ Offer made successfully");
+      
+    } catch (error) {
+      console.error("Failed to make offer:", error);
+      if (error.logs) {
+        console.error("Program logs:", JSON.stringify(error.logs, null, 2));
+      }
+      throw error;
+    }
+  });
 });
