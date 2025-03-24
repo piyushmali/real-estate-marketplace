@@ -104,6 +104,111 @@ describe("Real Estate Marketplace", () => {
     }
   });
 
+  // Add this new test case after the existing "List property" test
+it("List multiple properties", async () => {
+  const properties = [
+    {
+      propertyId: "Property200",
+      price: new anchor.BN(2000000),
+      metadataUri: "https://example.com/meta/p200.json",
+      location: "200 Blockchain Ave",
+      squareFeet: new anchor.BN(3000),
+      bedrooms: 4,
+      bathrooms: 3
+    },
+    {
+      propertyId: "Property201",
+      price: new anchor.BN(1500000),
+      metadataUri: "https://example.com/meta/p201.json",
+      location: "201 Crypto Lane",
+      squareFeet: new anchor.BN(2000),
+      bedrooms: 3,
+      bathrooms: 2
+    },
+    {
+      propertyId: "Property202",
+      price: new anchor.BN(3000000),
+      metadataUri: "https://example.com/meta/p202.json",
+      location: "202 Token Road",
+      squareFeet: new anchor.BN(4000),
+      bedrooms: 5,
+      bathrooms: 4
+    }
+  ];
+
+  const propertyPDAs: PublicKey[] = [];
+
+  try {
+    // List all properties sequentially
+    for (const prop of properties) {
+      const [propertyPDA] = await PublicKey.findProgramAddress(
+        [Buffer.from("property"), marketplacePDA.toBuffer(), Buffer.from(prop.propertyId)],
+        program.programId
+      );
+      propertyPDAs.push(propertyPDA);
+
+      const computeBudgetIx = ComputeBudgetProgram.setComputeUnitLimit({
+        units: 1000000
+      });
+
+      const tx = await program.methods
+        .listProperty(
+          prop.propertyId,
+          prop.price,
+          prop.metadataUri,
+          prop.location,
+          prop.squareFeet,
+          prop.bedrooms,
+          prop.bathrooms
+        )
+        .accounts({
+          marketplace: marketplacePDA,
+          property: propertyPDA,
+          owner: authority.publicKey,
+          systemProgram: anchor.web3.SystemProgram.programId,
+          rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+        })
+        .preInstructions([computeBudgetIx])
+        .rpc({
+          skipPreflight: true,
+          commitment: "confirmed",
+        });
+
+      console.log(`Transaction signature for ${prop.propertyId}:`, tx);
+    }
+
+    // Verify each property
+    for (let i = 0; i < properties.length; i++) {
+      const propertyAccount = await program.account.property.fetch(propertyPDAs[i]);
+      
+      expect(propertyAccount.owner.toString()).to.equal(authority.publicKey.toString());
+      expect(propertyAccount.propertyId).to.equal(properties[i].propertyId);
+      expect(propertyAccount.price.toNumber()).to.equal(properties[i].price.toNumber());
+      expect(propertyAccount.metadataUri).to.equal(properties[i].metadataUri);
+      expect(propertyAccount.location).to.equal(properties[i].location);
+      expect(propertyAccount.squareFeet.toNumber()).to.equal(properties[i].squareFeet.toNumber());
+      expect(propertyAccount.bedrooms).to.equal(properties[i].bedrooms);
+      expect(propertyAccount.bathrooms).to.equal(properties[i].bathrooms);
+      expect(propertyAccount.isActive).to.be.true;
+      expect(propertyAccount.transactionCount.toNumber()).to.equal(0);
+      expect(propertyAccount.marketplace.toString()).to.equal(marketplacePDA.toString());
+    }
+
+    // Verify marketplace properties count
+    const marketplaceAccount = await program.account.marketplace.fetch(marketplacePDA);
+    // Adding 1 to account for the property listed in the previous test
+    expect(marketplaceAccount.propertiesCount.toNumber()).to.equal(properties.length + 1);
+
+    console.log("✅ Multiple properties listed successfully");
+  } catch (error) {
+    console.error("Failed to list multiple properties:", error);
+    if (error.logs) {
+      console.error("Program logs:", JSON.stringify(error.logs, null, 2));
+    }
+    throw error;
+  }
+});
+
 
   it("Update property price", async () => {
     // First, ensure we have a property to update
