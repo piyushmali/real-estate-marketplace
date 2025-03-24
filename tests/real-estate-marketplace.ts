@@ -374,4 +374,169 @@ describe("Real Estate Marketplace", () => {
       throw error;
     }
   });
+  it("Respond to offer - Accept", async () => {
+    const propertyId = "Property123";
+    
+    // Create a new keypair for the buyer
+    const buyer = anchor.web3.Keypair.generate();
+    
+    // Airdrop some SOL to the buyer
+    const signature = await provider.connection.requestAirdrop(
+      buyer.publicKey,
+      2 * LAMPORTS_PER_SOL
+    );
+    await provider.connection.confirmTransaction(signature);
+    
+    const [propertyPDA] = await PublicKey.findProgramAddress(
+      [Buffer.from("property"), marketplacePDA.toBuffer(), Buffer.from(propertyId)],
+      program.programId
+    );
+    
+    const [offerPDA] = await PublicKey.findProgramAddress(
+      [Buffer.from("offer"), propertyPDA.toBuffer(), buyer.publicKey.toBuffer()],
+      program.programId
+    );
+    
+    try {
+      // 1. First, make an offer as the buyer
+      const offerAmount = new anchor.BN(950000); // 95% of listing price
+      const expirationTime = new anchor.BN(
+        Math.floor(Date.now() / 1000) + 86400 // +1 day
+      );
+      
+      await program.methods
+        .makeOffer(
+          offerAmount,
+          expirationTime
+        )
+        .accounts({
+          property: propertyPDA,
+          offer: offerPDA,
+          buyer: buyer.publicKey,
+          systemProgram: anchor.web3.SystemProgram.programId,
+          rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+        })
+        .signers([buyer])
+        .rpc({
+          commitment: "confirmed",
+        });
+      
+      console.log("✅ Created offer for accept test");
+      
+      // 2. Now respond to the offer as the property owner (accept it)
+      const computeBudgetIx = ComputeBudgetProgram.setComputeUnitLimit({
+        units: 400000
+      });
+      
+      const tx = await program.methods
+        .respondToOffer(true) // true = accept
+        .accounts({
+          property: propertyPDA,
+          offer: offerPDA,
+          owner: authority.publicKey,
+        })
+        .preInstructions([computeBudgetIx])
+        .rpc({
+          commitment: "confirmed",
+        });
+      
+      console.log("Accept offer transaction signature:", tx);
+      
+      // 3. Verify the offer status is updated to Accepted
+      const offerAfter = await program.account.offer.fetch(offerPDA);
+      expect(offerAfter.status.accepted).to.exist;
+      
+      console.log("✅ Offer accepted successfully");
+      
+    } catch (error) {
+      console.error("Failed to accept offer:", error);
+      if (error.logs) {
+        console.error("Program logs:", JSON.stringify(error.logs, null, 2));
+      }
+      throw error;
+    }
+  });
+  
+  it("Respond to offer - Reject", async () => {
+    const propertyId = "Property123";
+    
+    // Create a new keypair for the buyer
+    const buyer = anchor.web3.Keypair.generate();
+    
+    // Airdrop some SOL to the buyer
+    const signature = await provider.connection.requestAirdrop(
+      buyer.publicKey,
+      2 * LAMPORTS_PER_SOL
+    );
+    await provider.connection.confirmTransaction(signature);
+    
+    const [propertyPDA] = await PublicKey.findProgramAddress(
+      [Buffer.from("property"), marketplacePDA.toBuffer(), Buffer.from(propertyId)],
+      program.programId
+    );
+    
+    const [offerPDA] = await PublicKey.findProgramAddress(
+      [Buffer.from("offer"), propertyPDA.toBuffer(), buyer.publicKey.toBuffer()],
+      program.programId
+    );
+    
+    try {
+      // 1. First, make an offer as the buyer
+      const offerAmount = new anchor.BN(800000); // 80% of listing price (too low)
+      const expirationTime = new anchor.BN(
+        Math.floor(Date.now() / 1000) + 86400 // +1 day
+      );
+      
+      await program.methods
+        .makeOffer(
+          offerAmount,
+          expirationTime
+        )
+        .accounts({
+          property: propertyPDA,
+          offer: offerPDA,
+          buyer: buyer.publicKey,
+          systemProgram: anchor.web3.SystemProgram.programId,
+          rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+        })
+        .signers([buyer])
+        .rpc({
+          commitment: "confirmed",
+        });
+      
+      console.log("✅ Created offer for reject test");
+      
+      // 2. Now respond to the offer as the property owner (reject it)
+      const computeBudgetIx = ComputeBudgetProgram.setComputeUnitLimit({
+        units: 400000
+      });
+      
+      const tx = await program.methods
+        .respondToOffer(false) // false = reject
+        .accounts({
+          property: propertyPDA,
+          offer: offerPDA,
+          owner: authority.publicKey,
+        })
+        .preInstructions([computeBudgetIx])
+        .rpc({
+          commitment: "confirmed",
+        });
+      
+      console.log("Reject offer transaction signature:", tx);
+      
+      // 3. Verify the offer status is updated to Rejected
+      const offerAfter = await program.account.offer.fetch(offerPDA);
+      expect(offerAfter.status.rejected).to.exist;
+      
+      console.log("✅ Offer rejected successfully");
+      
+    } catch (error) {
+      console.error("Failed to reject offer:", error);
+      if (error.logs) {
+        console.error("Program logs:", JSON.stringify(error.logs, null, 2));
+      }
+      throw error;
+    }
+  });
 });
