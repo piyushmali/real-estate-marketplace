@@ -33,15 +33,19 @@ pub mod real_estate_marketplace {
         bedrooms: u8,
         bathrooms: u8,
     ) -> Result<()> {
+        msg!("Starting ListProperty");
+        
+        // Strictly validate string lengths
         require!(property_id.len() <= 32, ErrorCode::PropertyIdTooLong);
-        require!(metadata_uri.len() <= 200, ErrorCode::MetadataUriTooLong);
-        require!(location.len() <= 100, ErrorCode::LocationTooLong);
+        require!(metadata_uri.len() <= 100, ErrorCode::MetadataUriTooLong); // Reduced from 200
+        require!(location.len() <= 50, ErrorCode::LocationTooLong);         // Reduced from 100
         require!(price > 0, ErrorCode::InvalidPrice);
-
+    
         let marketplace = &mut ctx.accounts.marketplace;
         let property = &mut ctx.accounts.property;
         let clock = Clock::get()?;
-
+    
+        msg!("Initializing property account");
         property.owner = ctx.accounts.owner.key();
         property.property_id = property_id.clone();
         property.price = price;
@@ -55,12 +59,13 @@ pub mod real_estate_marketplace {
         property.updated_at = clock.unix_timestamp;
         property.transaction_count = 0;
         property.marketplace = marketplace.key();
-
+    
+        msg!("Updating marketplace properties count");
         marketplace.properties_count = marketplace
             .properties_count
             .checked_add(1)
             .ok_or(ErrorCode::ArithmeticOverflow)?;
-
+    
         emit!(PropertyListed {
             property: property.key(),
             owner: property.owner,
@@ -68,10 +73,11 @@ pub mod real_estate_marketplace {
             price: property.price,
             timestamp: clock.unix_timestamp,
         });
-
+    
+        msg!("ListProperty completed");
         Ok(())
     }
-
+    
     pub fn update_property(
         ctx: Context<UpdateProperty>,
         price: Option<u64>,
@@ -295,14 +301,27 @@ pub struct InitializeMarketplace<'info> {
 }
 
 #[derive(Accounts)]
-#[instruction(property_id: String, metadata_uri: String, location: String)]
+#[instruction(property_id: String, price: u64, metadata_uri: String, location: String, square_feet: u64, bedrooms: u8, bathrooms: u8)]
 pub struct ListProperty<'info> {
     #[account(mut)]
     pub marketplace: Account<'info, Marketplace>,
     #[account(
         init,
         payer = owner,
-        space = 8 + size_of::<Property>() + property_id.len() + metadata_uri.len() + location.len(),
+        space = 8 +     // discriminator
+               32 +     // marketplace Pubkey
+               32 +     // owner Pubkey
+               4 + 32 + // property_id String (max 32 bytes)
+               8 +      // price u64
+               4 + 100 + // metadata_uri String (max 100 bytes)
+               4 + 50 +  // location String (max 50 bytes)
+               8 +      // square_feet u64
+               1 +      // bedrooms u8
+               1 +      // bathrooms u8
+               1 +      // is_active bool
+               8 +      // created_at i64
+               8 +      // updated_at i64
+               8,       // transaction_count u64
         seeds = [b"property", marketplace.key().as_ref(), property_id.as_bytes()],
         bump
     )]
@@ -312,7 +331,6 @@ pub struct ListProperty<'info> {
     pub system_program: Program<'info, System>,
     pub rent: Sysvar<'info, Rent>,
 }
-
 #[derive(Accounts)]
 pub struct UpdateProperty<'info> {
     #[account(

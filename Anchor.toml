@@ -4,6 +4,9 @@
 resolution = true
 skip-lint = false
 
+[programs.devnet]
+real_estate_marketplace = "EcPni58apii69R7PstXNThzv44dTYdprEV1HzkjT3DbE"
+
 [programs.localnet]
 real_estate_marketplace = "EcPni58apii69R7PstXNThzv44dTYdprEV1HzkjT3DbE"
 
@@ -11,7 +14,7 @@ real_estate_marketplace = "EcPni58apii69R7PstXNThzv44dTYdprEV1HzkjT3DbE"
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "Localnet"
+cluster = "localnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
