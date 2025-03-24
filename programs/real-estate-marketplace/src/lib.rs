@@ -1,7 +1,10 @@
 #![allow(unused_imports)]
 #![allow(unexpected_cfgs)]
 use anchor_lang::prelude::*;
-use anchor_spl::token::{self, Token, Transfer};
+use anchor_spl::{
+    associated_token::AssociatedToken,
+    token::{self, MintTo, Transfer, Mint, TokenAccount, Token},
+};
 use std::mem::size_of;
 
 declare_id!("EcPni58apii69R7PstXNThzv44dTYdprEV1HzkjT3DbE");
@@ -33,24 +36,34 @@ pub mod real_estate_marketplace {
         bedrooms: u8,
         bathrooms: u8,
     ) -> Result<()> {
-        msg!("Starting ListProperty");
-        
-        // Strictly validate string lengths
         require!(property_id.len() <= 32, ErrorCode::PropertyIdTooLong);
-        require!(metadata_uri.len() <= 100, ErrorCode::MetadataUriTooLong); // Reduced from 200
-        require!(location.len() <= 50, ErrorCode::LocationTooLong);         // Reduced from 100
+        require!(metadata_uri.len() <= 100, ErrorCode::MetadataUriTooLong);
+        require!(location.len() <= 50, ErrorCode::LocationTooLong);
         require!(price > 0, ErrorCode::InvalidPrice);
-    
+
         let marketplace = &mut ctx.accounts.marketplace;
         let property = &mut ctx.accounts.property;
         let clock = Clock::get()?;
-    
-        msg!("Initializing property account");
+
+        // Mint NFT for the property
+        token::mint_to(
+            CpiContext::new(
+                ctx.accounts.token_program.to_account_info(),
+                MintTo {
+                    mint: ctx.accounts.property_nft_mint.to_account_info(),
+                    to: ctx.accounts.owner_nft_account.to_account_info(),
+                    authority: ctx.accounts.owner.to_account_info(),
+                },
+            ),
+            1,
+        )?;
+
+        // Initialize property account
         property.owner = ctx.accounts.owner.key();
-        property.property_id = property_id.clone();
+        property.property_id = property_id;
         property.price = price;
-        property.metadata_uri = metadata_uri.clone();
-        property.location = location.clone();
+        property.metadata_uri = metadata_uri;
+        property.location = location;
         property.square_feet = square_feet;
         property.bedrooms = bedrooms;
         property.bathrooms = bathrooms;
@@ -59,25 +72,25 @@ pub mod real_estate_marketplace {
         property.updated_at = clock.unix_timestamp;
         property.transaction_count = 0;
         property.marketplace = marketplace.key();
-    
-        msg!("Updating marketplace properties count");
+        property.nft_mint = ctx.accounts.property_nft_mint.key();
+
         marketplace.properties_count = marketplace
             .properties_count
             .checked_add(1)
             .ok_or(ErrorCode::ArithmeticOverflow)?;
-    
+
         emit!(PropertyListed {
             property: property.key(),
             owner: property.owner,
-            property_id,
+            property_id: property.property_id.clone(),
             price: property.price,
+            nft_mint: property.nft_mint,
             timestamp: clock.unix_timestamp,
         });
-    
-        msg!("ListProperty completed");
+
         Ok(())
     }
-    
+
     pub fn update_property(
         ctx: Context<UpdateProperty>,
         price: Option<u64>,
@@ -87,17 +100,21 @@ pub mod real_estate_marketplace {
         let property = &mut ctx.accounts.property;
         let clock = Clock::get()?;
 
+        // Deserialize the token account to check ownership
+        let owner_nft_account = TokenAccount::try_deserialize(&mut &ctx.accounts.owner_nft_account.data.borrow()[..])?;
+        require!(owner_nft_account.amount == 1, ErrorCode::NotNFTOwner);
+
         if let Some(new_price) = price {
             require!(new_price > 0, ErrorCode::InvalidPrice);
             property.price = new_price;
         }
 
-        if let Some(new_metadata_uri) = &metadata_uri {
+        if let Some(new_metadata_uri) = metadata_uri {
             require!(
                 new_metadata_uri.len() <= 200,
                 ErrorCode::MetadataUriTooLong
             );
-            property.metadata_uri = new_metadata_uri.clone();
+            property.metadata_uri = new_metadata_uri;
         }
 
         if let Some(new_is_active) = is_active {
@@ -209,7 +226,10 @@ pub mod real_estate_marketplace {
             ErrorCode::OfferPropertyMismatch
         );
 
-        // Calculate marketplace fee with checked operations
+        // Deserialize the token account to check ownership
+        let seller_nft_account = TokenAccount::try_deserialize(&mut &ctx.accounts.seller_nft_account.data.borrow()[..])?;
+        require!(seller_nft_account.amount == 1, ErrorCode::NotNFTOwner);
+
         let fee_amount = offer
             .amount
             .checked_mul(marketplace.fee_percentage)
@@ -221,7 +241,6 @@ pub mod real_estate_marketplace {
             .checked_sub(fee_amount)
             .ok_or(ErrorCode::ArithmeticOverflow)?;
 
-        // Transfer tokens from buyer to seller and marketplace
         token::transfer(
             CpiContext::new(
                 ctx.accounts.token_program.to_account_info(),
@@ -246,18 +265,28 @@ pub mod real_estate_marketplace {
             fee_amount,
         )?;
 
-        // Update property ownership and transaction history
+        token::transfer(
+            CpiContext::new(
+                ctx.accounts.token_program.to_account_info(),
+                Transfer {
+                    from: ctx.accounts.seller_nft_account.to_account_info(),
+                    to: ctx.accounts.buyer_nft_account.to_account_info(),
+                    authority: ctx.accounts.seller.to_account_info(),
+                },
+            ),
+            1,
+        )?;
+
         let previous_owner = property.owner;
         property.owner = offer.buyer;
         property.price = offer.amount;
-        property.is_active = false; // Deactivate property after sale
+        property.is_active = false;
         property.updated_at = clock.unix_timestamp;
         property.transaction_count = property
             .transaction_count
             .checked_add(1)
             .ok_or(ErrorCode::ArithmeticOverflow)?;
 
-        // Create transaction history
         let transaction_history = &mut ctx.accounts.transaction_history;
         transaction_history.property = property.key();
         transaction_history.seller = previous_owner;
@@ -266,7 +295,6 @@ pub mod real_estate_marketplace {
         transaction_history.timestamp = clock.unix_timestamp;
         transaction_history.transaction_index = property.transaction_count;
 
-        // Update offer status
         offer.status = OfferStatus::Completed;
         offer.updated_at = clock.unix_timestamp;
 
@@ -276,6 +304,7 @@ pub mod real_estate_marketplace {
             previous_owner,
             new_owner: property.owner,
             price: offer.amount,
+            nft_mint: property.nft_mint,
             timestamp: clock.unix_timestamp,
         });
 
@@ -301,52 +330,70 @@ pub struct InitializeMarketplace<'info> {
 }
 
 #[derive(Accounts)]
-#[instruction(property_id: String, price: u64, metadata_uri: String, location: String, square_feet: u64, bedrooms: u8, bathrooms: u8)]
+#[instruction(
+    property_id: String,
+    price: u64,
+    metadata_uri: String,
+    location: String,
+    square_feet: u64,
+    bedrooms: u8,
+    bathrooms: u8
+)]
 pub struct ListProperty<'info> {
     #[account(mut)]
     pub marketplace: Account<'info, Marketplace>,
     #[account(
         init,
         payer = owner,
-        space = 8 +     // discriminator
-               32 +     // marketplace Pubkey
-               32 +     // owner Pubkey
-               4 + 32 + // property_id String (max 32 bytes)
-               8 +      // price u64
-               4 + 100 + // metadata_uri String (max 100 bytes)
-               4 + 50 +  // location String (max 50 bytes)
-               8 +      // square_feet u64
-               1 +      // bedrooms u8
-               1 +      // bathrooms u8
-               1 +      // is_active bool
-               8 +      // created_at i64
-               8 +      // updated_at i64
-               8,       // transaction_count u64
+        space = 8 + size_of::<Property>(),
         seeds = [b"property", marketplace.key().as_ref(), property_id.as_bytes()],
         bump
     )]
     pub property: Account<'info, Property>,
     #[account(mut)]
     pub owner: Signer<'info>,
+    /// CHECK: This is the NFT mint account, initialized by the token program
+    #[account(
+        mut,
+        constraint = property_nft_mint.owner == &token::ID
+    )]
+    pub property_nft_mint: AccountInfo<'info>,
+    /// CHECK: This is the owner's NFT token account, managed by the associated token program
+    #[account(mut)]
+    pub owner_nft_account: AccountInfo<'info>,
     pub system_program: Program<'info, System>,
+    pub token_program: Program<'info, Token>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
     pub rent: Sysvar<'info, Rent>,
 }
+
 #[derive(Accounts)]
 pub struct UpdateProperty<'info> {
     #[account(
         mut,
-        constraint = property.owner == owner.key() @ ErrorCode::NotPropertyOwner
+        constraint = property.owner == *owner.key
     )]
     pub property: Account<'info, Property>,
     #[account(mut)]
     pub owner: Signer<'info>,
+    /// CHECK: This is the owner's NFT token account
+    #[account(
+        mut,
+        constraint = owner_nft_account.owner == &token::ID
+    )]
+    pub owner_nft_account: AccountInfo<'info>,
+    /// CHECK: This is the NFT mint account
+    #[account(
+        constraint = property.nft_mint == *property_nft_mint.key
+    )]
+    pub property_nft_mint: AccountInfo<'info>,
 }
 
 #[derive(Accounts)]
 pub struct MakeOffer<'info> {
     #[account(
-        constraint = property.is_active @ ErrorCode::PropertyNotActive,
-        constraint = property.owner != buyer.key() @ ErrorCode::CannotOfferOwnProperty
+        constraint = property.is_active,
+        constraint = property.owner != *buyer.key
     )]
     pub property: Account<'info, Property>,
     #[account(
@@ -367,12 +414,12 @@ pub struct MakeOffer<'info> {
 pub struct RespondToOffer<'info> {
     #[account(
         mut,
-        constraint = property.owner == owner.key() @ ErrorCode::NotPropertyOwner
+        constraint = property.owner == *owner.key
     )]
     pub property: Account<'info, Property>,
     #[account(
         mut,
-        constraint = offer.property == property.key() @ ErrorCode::OfferPropertyMismatch
+        constraint = offer.property == property.key()
     )]
     pub offer: Account<'info, Offer>,
     #[account(mut)]
@@ -383,16 +430,13 @@ pub struct RespondToOffer<'info> {
 pub struct ExecuteSale<'info> {
     #[account(mut)]
     pub marketplace: Account<'info, Marketplace>,
-    #[account(
-        mut,
-        constraint = property.is_active @ ErrorCode::PropertyNotActive
-    )]
+    #[account(mut)]
     pub property: Account<'info, Property>,
     #[account(
         mut,
-        constraint = offer.property == property.key() @ ErrorCode::OfferPropertyMismatch,
-        constraint = offer.status == OfferStatus::Accepted @ ErrorCode::OfferNotAccepted,
-        constraint = offer.buyer == buyer.key() @ ErrorCode::NotOfferBuyer
+        constraint = offer.property == property.key(),
+        constraint = offer.status == OfferStatus::Accepted,
+        constraint = offer.buyer == *buyer.key
     )]
     pub offer: Account<'info, Offer>,
     #[account(
@@ -409,21 +453,32 @@ pub struct ExecuteSale<'info> {
     pub transaction_history: Account<'info, TransactionHistory>,
     #[account(mut)]
     pub buyer: Signer<'info>,
-    /// CHECK: This is the property owner who will receive the payment, validated by constraint
     #[account(
-        constraint = property.owner == seller.key() @ ErrorCode::NotPropertyOwner
+        constraint = property.owner == *seller.key
     )]
-    pub seller: AccountInfo<'info>,
-    /// CHECK: This is the buyer's token account, validated by token program transfer
+    pub seller: Signer<'info>,
+    /// CHECK: This is the buyer's token account for payment
     #[account(mut)]
     pub buyer_token_account: AccountInfo<'info>,
-    /// CHECK: This is the seller's token account, validated by token program transfer
+    /// CHECK: This is the seller's token account for payment
     #[account(mut)]
     pub seller_token_account: AccountInfo<'info>,
-    /// CHECK: This is the marketplace fee account, validated by token program transfer
+    /// CHECK: This is the marketplace fee token account
     #[account(mut)]
     pub marketplace_fee_account: AccountInfo<'info>,
+    /// CHECK: This is the seller's NFT token account
+    #[account(mut)]
+    pub seller_nft_account: AccountInfo<'info>,
+    /// CHECK: This is the buyer's NFT token account
+    #[account(mut)]
+    pub buyer_nft_account: AccountInfo<'info>,
+    /// CHECK: This is the NFT mint account
+    #[account(
+        constraint = property.nft_mint == *property_nft_mint.key
+    )]
+    pub property_nft_mint: AccountInfo<'info>,
     pub token_program: Program<'info, Token>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
     pub system_program: Program<'info, System>,
     pub rent: Sysvar<'info, Rent>,
 }
@@ -432,7 +487,7 @@ pub struct ExecuteSale<'info> {
 pub struct Marketplace {
     pub authority: Pubkey,
     pub properties_count: u64,
-    pub fee_percentage: u64, // Basis points (100 = 1%)
+    pub fee_percentage: u64,
 }
 
 #[account]
@@ -450,6 +505,7 @@ pub struct Property {
     pub created_at: i64,
     pub updated_at: i64,
     pub transaction_count: u64,
+    pub nft_mint: Pubkey,
 }
 
 #[account]
@@ -488,6 +544,7 @@ pub struct PropertyListed {
     pub owner: Pubkey,
     pub property_id: String,
     pub price: u64,
+    pub nft_mint: Pubkey,
     pub timestamp: i64,
 }
 
@@ -535,6 +592,7 @@ pub struct PropertySold {
     pub previous_owner: Pubkey,
     pub new_owner: Pubkey,
     pub price: u64,
+    pub nft_mint: Pubkey,
     pub timestamp: i64,
 }
 
@@ -576,4 +634,8 @@ pub enum ErrorCode {
     ArithmeticOverflow,
     #[msg("Invalid fee percentage")]
     InvalidFeePercentage,
+    #[msg("Not NFT owner")]
+    NotNFTOwner,
+    #[msg("Invalid NFT mint")]
+    InvalidNFTMint,
 }
