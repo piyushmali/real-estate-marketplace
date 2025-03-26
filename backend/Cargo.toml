@@ -1,0 +1,16 @@
+[package]
+name = "real-estate-marketplace-backend"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+axum = "0.7"                   # Lightweight web framework
+serde = { version = "1.0", features = ["derive"] }  # JSON serialization
+diesel = { version = "2.2", features = ["postgres"] }  # ORM-like database access
+tokio = { version = "1", features = ["full"] }  # Async runtime
+solana-rpc-client = "1.18"     # Simplified Solana RPC interaction
+solana-sdk = "1.18"            # For Pubkey and basic types
+anchor-lang = "0.30.1"         # Anchor smart contract interaction
+config = "0.14"                # Configuration management
+log = "0.4"                    # Logging
+env_logger = "0.11"            # Logging implementation
