@@ -1,5 +1,5 @@
 [default]
 port = 8080
-database_url = "postgres://user:password@localhost:5432/real_estate_db"
+database_url = "postgres://piyush:123456@localhost:5432/real_estate_db"
 solana_rpc_url = "https://api.devnet.solana.com"
 program_id = "EcPni58apii69R7PstXNThzv44dTYdprEV1HzkjT3DbE"
