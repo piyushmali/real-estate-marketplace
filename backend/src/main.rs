@@ -70,8 +70,7 @@ async fn list_property(Json(new_property): Json<models::NewProperty>) -> Json<se
 
     solana.list_property(&new_property.property_id).unwrap();
     let now = chrono::Utc::now().timestamp();
-    let property = models::Property {
-        id: 0, // Auto-incremented by DB
+    let property = models::NewProperty {
         property_id: new_property.property_id,
         owner_pubkey: new_property.owner_pubkey,
         price: new_property.price,
@@ -106,8 +105,7 @@ async fn make_offer(Json(new_offer): Json<models::NewOffer>) -> Json<serde_json:
 
     solana.make_offer(&new_offer.property_id, new_offer.amount).unwrap();
     let now = chrono::Utc::now().timestamp();
-    let offer = models::Offer {
-        id: 0, // Auto-incremented by DB
+    let offer = models::NewOffer {
         property_id: new_offer.property_id,
         buyer_pubkey: new_offer.buyer_pubkey,
         amount: new_offer.amount,
@@ -160,13 +158,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     log::info!("Starting server on {}", addr);
 
     let state = AppState { settings };
+    let protected_routes = Router::new()
+        .route("/properties", post(list_property))
+        .route("/offers", post(make_offer))
+        .layer(middleware::from_fn_with_state(state.clone(), authenticate));
+
     let app = Router::new()
         .route("/", get(|| async { "Hello, Real Estate Marketplace!" }))
         .route("/test-solana", get(test_solana))
-        .route("/properties", post(list_property))
-        .route("/offers", post(make_offer))
         .route("/login", get(login))
-        .layer(middleware::from_fn_with_state(state.clone(), authenticate))
+        .merge(protected_routes)
         .with_state(state);
 
     axum::serve(tokio::net::TcpListener::bind(addr).await?, app.into_make_service()).await?;
