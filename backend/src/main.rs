@@ -1,18 +1,18 @@
 use axum::{routing::{get, post}, Router, Json, middleware, extract::State};
-use config::Config;
 use diesel::prelude::*;
 use std::net::SocketAddr;
 use serde_json::json;
 use axum::http::{HeaderMap, StatusCode};
 
+mod auth;
+mod config;
+mod models;
 mod schema;
 mod solana;
-mod models;
-mod auth;
 
 #[derive(Clone)]
 struct AppState {
-    settings: Config,
+    config: config::AppConfig,
 }
 
 async fn authenticate(
@@ -29,44 +29,32 @@ async fn authenticate(
         StatusCode::UNAUTHORIZED,
         "Invalid Authorization header format".to_string(),
     ))?;
-    let user_id = auth::validate_token(token).map_err(|_| (
+    let user_id = auth::validate_token(token, &state.config.jwt_secret).map_err(|_| (
         StatusCode::UNAUTHORIZED,
         "Invalid or expired token".to_string(),
     ))?;
-    log::info!("Authenticated user: {} for {:?}", user_id, state.settings.get_string("default.database_url"));
+    log::info!("Authenticated user: {} for {:?}", user_id, state.config.database_url);
     Ok(next.run(request).await)
 }
 
 async fn login() -> Json<serde_json::Value> {
-    let token = auth::create_token("user123").unwrap();
+    let config = config::AppConfig::load().unwrap();
+    let token = auth::create_token("user123", &config.jwt_secret).unwrap();
     Json(json!({"token": token}))
 }
 
 async fn test_solana() -> String {
-    let settings = Config::builder()
-        .add_source(config::File::with_name("settings").required(true))
-        .build()
-        .expect("Failed to load settings");
-    let solana = solana::SolanaClient::new(
-        &settings.get_string("default.solana_rpc_url").unwrap(),
-        &settings.get_string("default.program_id").unwrap(),
-    )
-    .expect("Failed to initialize Solana client");
+    let config = config::AppConfig::load().unwrap();
+    let solana = solana::SolanaClient::new(&config.solana_rpc_url, &config.program_id)
+        .expect("Failed to initialize Solana client");
     let data_len = solana.get_program_account_data_len().unwrap_or(0);
     format!("Program account data length: {}", data_len)
 }
 
 async fn list_property(Json(new_property): Json<models::NewProperty>) -> Json<serde_json::Value> {
-    let settings = Config::builder()
-        .add_source(config::File::with_name("settings").required(true))
-        .build()
-        .unwrap();
-    let db_url = settings.get_string("default.database_url").unwrap();
-    let mut conn = PgConnection::establish(&db_url).unwrap();
-    let solana = solana::SolanaClient::new(
-        &settings.get_string("default.solana_rpc_url").unwrap(),
-        &settings.get_string("default.program_id").unwrap(),
-    ).unwrap();
+    let config = config::AppConfig::load().unwrap();
+    let mut conn = PgConnection::establish(&config.database_url).unwrap();
+    let solana = solana::SolanaClient::new(&config.solana_rpc_url, &config.program_id).unwrap();
 
     solana.list_property(&new_property.property_id).unwrap();
     let now = chrono::Utc::now().timestamp();
@@ -94,16 +82,9 @@ async fn list_property(Json(new_property): Json<models::NewProperty>) -> Json<se
 }
 
 async fn make_offer(Json(new_offer): Json<models::NewOffer>) -> Json<serde_json::Value> {
-    let settings = Config::builder()
-        .add_source(config::File::with_name("settings").required(true))
-        .build()
-        .unwrap();
-    let db_url = settings.get_string("default.database_url").unwrap();
-    let mut conn = PgConnection::establish(&db_url).unwrap();
-    let solana = solana::SolanaClient::new(
-        &settings.get_string("default.solana_rpc_url").unwrap(),
-        &settings.get_string("default.program_id").unwrap(),
-    ).unwrap();
+    let config = config::AppConfig::load().unwrap();
+    let mut conn = PgConnection::establish(&config.database_url).unwrap();
+    let solana = solana::SolanaClient::new(&config.solana_rpc_url, &config.program_id).unwrap();
 
     solana.make_offer(&new_offer.property_id, new_offer.amount).unwrap();
     let now = chrono::Utc::now().timestamp();
@@ -126,16 +107,9 @@ async fn make_offer(Json(new_offer): Json<models::NewOffer>) -> Json<serde_json:
 }
 
 async fn respond_to_offer(Json(response): Json<models::OfferResponse>) -> Json<serde_json::Value> {
-    let settings = Config::builder()
-        .add_source(config::File::with_name("settings").required(true))
-        .build()
-        .unwrap();
-    let db_url = settings.get_string("default.database_url").unwrap();
-    let mut conn = PgConnection::establish(&db_url).unwrap();
-    let solana = solana::SolanaClient::new(
-        &settings.get_string("default.solana_rpc_url").unwrap(),
-        &settings.get_string("default.program_id").unwrap(),
-    ).unwrap();
+    let config = config::AppConfig::load().unwrap();
+    let mut conn = PgConnection::establish(&config.database_url).unwrap();
+    let solana = solana::SolanaClient::new(&config.solana_rpc_url, &config.program_id).unwrap();
 
     let status = if response.accept { "accepted" } else { "rejected" };
     let now = chrono::Utc::now().timestamp();
@@ -151,16 +125,9 @@ async fn respond_to_offer(Json(response): Json<models::OfferResponse>) -> Json<s
 }
 
 async fn finalize_sale(Json(sale): Json<models::SaleRequest>) -> Json<serde_json::Value> {
-    let settings = Config::builder()
-        .add_source(config::File::with_name("settings").required(true))
-        .build()
-        .unwrap();
-    let db_url = settings.get_string("default.database_url").unwrap();
-    let mut conn = PgConnection::establish(&db_url).unwrap();
-    let solana = solana::SolanaClient::new(
-        &settings.get_string("default.solana_rpc_url").unwrap(),
-        &settings.get_string("default.program_id").unwrap(),
-    ).unwrap();
+    let config = config::AppConfig::load().unwrap();
+    let mut conn = PgConnection::establish(&config.database_url).unwrap();
+    let solana = solana::SolanaClient::new(&config.solana_rpc_url, &config.program_id).unwrap();
 
     let now = chrono::Utc::now().timestamp();
     solana.finalize_sale(&sale.property_id, sale.offer_id).unwrap();
@@ -188,36 +155,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     env_logger::init();
 
-    let settings = Config::builder()
-        .add_source(config::File::with_name("settings").required(true))
-        .add_source(config::Environment::with_prefix("REAL_ESTATE_MARKETPLACE"))
-        .build()
-        .map_err(|e| format!("Failed to load configuration: {}", e))?;
-    
-    log::info!("Loaded config: {:?}", settings);
+    let config = config::AppConfig::load()?;
+    log::info!("Loaded config: {:?}", config);
 
-    let port = settings.get_int("default.port").unwrap_or_else(|_| {
-        log::warn!("Port not found in config, defaulting to 8080");
-        8080
-    }) as u16;
-    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    let addr = SocketAddr::from(([127, 0, 0, 1], config.port));
 
-    let db_url = settings.get_string("default.database_url")?;
-    let mut conn = PgConnection::establish(&db_url)
+    let mut conn = PgConnection::establish(&config.database_url)
         .map_err(|e| format!("Failed to connect to database: {}", e))?;
     let test_query: i32 = diesel::select(diesel::dsl::sql::<diesel::sql_types::Integer>("1"))
         .get_result(&mut conn)?;
     log::info!("Database test query result: {}", test_query);
 
-    let solana = solana::SolanaClient::new(
-        &settings.get_string("default.solana_rpc_url")?,
-        &settings.get_string("default.program_id")?,
-    )?;
+    let solana = solana::SolanaClient::new(&config.solana_rpc_url, &config.program_id)?;
     log::info!("Solana program ID: {}", solana.get_program_id());
 
     log::info!("Starting server on {}", addr);
 
-    let state = AppState { settings };
+    let state = AppState { config };
     let protected_routes = Router::new()
         .route("/properties", post(list_property))
         .route("/offers", post(make_offer))
