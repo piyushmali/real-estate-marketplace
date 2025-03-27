@@ -6,10 +6,10 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
-real_estate_marketplace = "EcPni58apii69R7PstXNThzv44dTYdprEV1HzkjT3DbE"
+real_estate_marketplace = "9KqRWCSKnNfFjfvZZsmDZfhkbzbpNVZ3kJENMk39U4fH"
 
 [programs.localnet]
-real_estate_marketplace = "EcPni58apii69R7PstXNThzv44dTYdprEV1HzkjT3DbE"
+real_estate_marketplace = "9KqRWCSKnNfFjfvZZsmDZfhkbzbpNVZ3kJENMk39U4fH"
 
 [registry]
 url = "https://api.apr.dev"

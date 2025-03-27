@@ -7,7 +7,7 @@ use anchor_spl::{
 };
 use std::mem::size_of;
 
-declare_id!("EcPni58apii69R7PstXNThzv44dTYdprEV1HzkjT3DbE");
+declare_id!("9KqRWCSKnNfFjfvZZsmDZfhkbzbpNVZ3kJENMk39U4fH");
 
 #[program]
 pub mod real_estate_marketplace {

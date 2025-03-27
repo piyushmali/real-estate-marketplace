@@ -19,7 +19,7 @@ use mpl_token_metadata::{
 };
 use std::mem::size_of;
 
-declare_id!("EcPni58apii69R7PstXNThzv44dTYdprEV1HzkjT3DbE");
+declare_id!("9KqRWCSKnNfFjfvZZsmDZfhkbzbpNVZ3kJENMk39U4fH");
 
 const METAPLEX_PROGRAM_ID: Pubkey = Pubkey::new_from_array([
     0x6d, 0x65, 0x74, 0x61, 0x51, 0x62, 0x69, 0x78, 0x6d, 0x68, 0x64, 0x72, 0x62, 0x78, 0x63, 0x32,
