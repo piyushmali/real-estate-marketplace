@@ -31,9 +31,6 @@ pub struct NewProperty {
     pub square_feet: i64,
     pub bedrooms: i16,
     pub bathrooms: i16,
-    pub is_active: bool,
-    pub created_at: i64,
-    pub updated_at: i64,
     pub nft_mint: String,
 }
 
@@ -56,8 +53,17 @@ pub struct NewOffer {
     pub property_id: String,
     pub buyer_pubkey: String,
     pub amount: i64,
-    pub status: String,
-    pub created_at: i64,
-    pub updated_at: i64,
     pub expiration_time: i64,
+}
+
+#[derive(Deserialize)]
+pub struct OfferResponse {
+    pub offer_id: i32,
+    pub accept: bool,
+}
+
+#[derive(Deserialize)]
+pub struct SaleRequest {
+    pub property_id: String,
+    pub offer_id: i32,
 }

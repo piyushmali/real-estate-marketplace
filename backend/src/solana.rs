@@ -23,14 +23,23 @@ impl SolanaClient {
         Ok(account.data.len())
     }
 
-    // Mock functions (replace with real Anchor calls later)
-    pub fn list_property(&self, _property_id: &str) -> Result<(), Box<dyn std::error::Error>> {
-        log::info!("Mock: Listing property {} on Solana", _property_id);
+    pub fn list_property(&self, property_id: &str) -> Result<(), Box<dyn std::error::Error>> {
+        log::info!("Mock: Listing property {} on Solana", property_id);
         Ok(())
     }
 
-    pub fn make_offer(&self, _property_id: &str, _amount: i64) -> Result<(), Box<dyn std::error::Error>> {
-        log::info!("Mock: Making offer for property {} with amount {}", _property_id, _amount);
+    pub fn make_offer(&self, property_id: &str, amount: i64) -> Result<(), Box<dyn std::error::Error>> {
+        log::info!("Mock: Making offer for property {} with amount {}", property_id, amount);
+        Ok(())
+    }
+
+    pub fn respond_to_offer(&self, offer_id: i32, accept: bool) -> Result<(), Box<dyn std::error::Error>> {
+        log::info!("Mock: Responding to offer {} with accept: {}", offer_id, accept);
+        Ok(())
+    }
+
+    pub fn finalize_sale(&self, property_id: &str, offer_id: i32) -> Result<(), Box<dyn std::error::Error>> {
+        log::info!("Mock: Finalizing sale for property {} with offer {}", property_id, offer_id);
         Ok(())
     }
 }

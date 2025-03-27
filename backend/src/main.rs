@@ -79,13 +79,15 @@ async fn list_property(Json(new_property): Json<models::NewProperty>) -> Json<se
         square_feet: new_property.square_feet,
         bedrooms: new_property.bedrooms,
         bathrooms: new_property.bathrooms,
-        is_active: true,
-        created_at: now,
-        updated_at: now,
         nft_mint: new_property.nft_mint,
     };
     diesel::insert_into(schema::properties::table)
-        .values(&property)
+        .values((
+            &property,
+            schema::properties::is_active.eq(true),
+            schema::properties::created_at.eq(now),
+            schema::properties::updated_at.eq(now),
+        ))
         .execute(&mut conn)
         .unwrap();
     Json(json!({"status": "Property listed"}))
@@ -109,16 +111,74 @@ async fn make_offer(Json(new_offer): Json<models::NewOffer>) -> Json<serde_json:
         property_id: new_offer.property_id,
         buyer_pubkey: new_offer.buyer_pubkey,
         amount: new_offer.amount,
-        status: "pending".to_string(),
-        created_at: now,
-        updated_at: now,
         expiration_time: new_offer.expiration_time,
     };
     diesel::insert_into(schema::offers::table)
-        .values(&offer)
+        .values((
+            &offer,
+            schema::offers::status.eq("pending"),
+            schema::offers::created_at.eq(now),
+            schema::offers::updated_at.eq(now),
+        ))
         .execute(&mut conn)
         .unwrap();
     Json(json!({"status": "Offer made"}))
+}
+
+async fn respond_to_offer(Json(response): Json<models::OfferResponse>) -> Json<serde_json::Value> {
+    let settings = Config::builder()
+        .add_source(config::File::with_name("settings").required(true))
+        .build()
+        .unwrap();
+    let db_url = settings.get_string("default.database_url").unwrap();
+    let mut conn = PgConnection::establish(&db_url).unwrap();
+    let solana = solana::SolanaClient::new(
+        &settings.get_string("default.solana_rpc_url").unwrap(),
+        &settings.get_string("default.program_id").unwrap(),
+    ).unwrap();
+
+    let status = if response.accept { "accepted" } else { "rejected" };
+    let now = chrono::Utc::now().timestamp();
+    solana.respond_to_offer(response.offer_id, response.accept).unwrap();
+    diesel::update(schema::offers::table.filter(schema::offers::id.eq(response.offer_id)))
+        .set((
+            schema::offers::status.eq(status),
+            schema::offers::updated_at.eq(now),
+        ))
+        .execute(&mut conn)
+        .unwrap();
+    Json(json!({"status": format!("Offer {}", status)}))
+}
+
+async fn finalize_sale(Json(sale): Json<models::SaleRequest>) -> Json<serde_json::Value> {
+    let settings = Config::builder()
+        .add_source(config::File::with_name("settings").required(true))
+        .build()
+        .unwrap();
+    let db_url = settings.get_string("default.database_url").unwrap();
+    let mut conn = PgConnection::establish(&db_url).unwrap();
+    let solana = solana::SolanaClient::new(
+        &settings.get_string("default.solana_rpc_url").unwrap(),
+        &settings.get_string("default.program_id").unwrap(),
+    ).unwrap();
+
+    let now = chrono::Utc::now().timestamp();
+    solana.finalize_sale(&sale.property_id, sale.offer_id).unwrap();
+    diesel::update(schema::properties::table.filter(schema::properties::property_id.eq(&sale.property_id)))
+        .set((
+            schema::properties::is_active.eq(false),
+            schema::properties::updated_at.eq(now),
+        ))
+        .execute(&mut conn)
+        .unwrap();
+    diesel::update(schema::offers::table.filter(schema::offers::id.eq(sale.offer_id)))
+        .set((
+            schema::offers::status.eq("completed"),
+            schema::offers::updated_at.eq(now),
+        ))
+        .execute(&mut conn)
+        .unwrap();
+    Json(json!({"status": "Sale finalized"}))
 }
 
 #[tokio::main]
@@ -161,6 +221,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let protected_routes = Router::new()
         .route("/properties", post(list_property))
         .route("/offers", post(make_offer))
+        .route("/respond-offer", post(respond_to_offer))
+        .route("/finalize-sale", post(finalize_sale))
         .layer(middleware::from_fn_with_state(state.clone(), authenticate));
 
     let app = Router::new()
