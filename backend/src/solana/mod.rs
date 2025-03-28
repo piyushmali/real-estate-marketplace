@@ -15,7 +15,6 @@ use bincode;
 use spl_token as spl_token_program;
 use spl_associated_token_account;
 
-// Custom error type to handle all possible errors
 #[derive(Debug)]
 pub enum SolanaError {
     AnchorClient(anchor_client::ClientError),
@@ -69,7 +68,6 @@ impl std::fmt::Display for SolanaError {
 
 impl std::error::Error for SolanaError {}
 
-// Define instruction data structs based on IDL
 #[derive(AnchorSerialize)]
 struct ListPropertyArgs {
     property_id: String,
@@ -127,6 +125,7 @@ impl SolanaClient {
         property_data: &super::models::NewProperty,
         owner_pubkey: &str,
     ) -> std::result::Result<TransactionResponse, SolanaError> {
+        log::info!("Preparing list_property for {:?}", property_data);
         let program = self.client.program(self.program_id)?;
         let owner = Pubkey::from_str(owner_pubkey)?;
         let (marketplace_pda, _) = Pubkey::find_program_address(
@@ -184,6 +183,7 @@ impl SolanaClient {
         expiration_time: i64,
         buyer_pubkey: &str,
     ) -> std::result::Result<TransactionResponse, SolanaError> {
+        log::info!("Preparing make_offer for property_id: {}", property_id);
         let program = self.client.program(self.program_id)?;
         let buyer = Pubkey::from_str(buyer_pubkey)?;
         let property_key = Pubkey::from_str(property_id)?;
@@ -227,6 +227,7 @@ impl SolanaClient {
         accept: bool,
         owner_pubkey: &str,
     ) -> std::result::Result<TransactionResponse, SolanaError> {
+        log::info!("Preparing respond_to_offer for offer_id: {}, accept: {}", offer_id, accept);
         let program = self.client.program(self.program_id)?;
         let owner = Pubkey::from_str(owner_pubkey)?;
         let offer_key = Pubkey::from_str(&format!("offer{}", offer_id))?; // Placeholder
@@ -262,6 +263,7 @@ impl SolanaClient {
         buyer_pubkey: &str,
         seller_pubkey: &str,
     ) -> std::result::Result<TransactionResponse, SolanaError> {
+        log::info!("Preparing finalize_sale for property_id: {}, offer_id: {}", property_id, offer_id);
         let program = self.client.program(self.program_id)?;
         let buyer = Pubkey::from_str(buyer_pubkey)?;
         let seller = Pubkey::from_str(seller_pubkey)?;

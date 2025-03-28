@@ -1,5 +1,6 @@
 use axum::{routing::{get, post}, Router, Json, middleware, extract::State};
 use diesel::prelude::*;
+use diesel::r2d2::{self, ConnectionManager};
 use std::net::SocketAddr;
 use serde_json::json;
 use axum::http::{HeaderMap, StatusCode};
@@ -11,9 +12,12 @@ mod models;
 mod schema;
 mod solana;
 
+type Pool = r2d2::Pool<ConnectionManager<PgConnection>>;
+
 #[derive(Clone)]
 struct AppState {
     config: config::AppConfig,
+    db_pool: Pool,
 }
 
 async fn authenticate(
@@ -38,9 +42,8 @@ async fn authenticate(
     Ok(next.run(request).await)
 }
 
-async fn login() -> Json<serde_json::Value> {
-    let config = config::AppConfig::load().unwrap();
-    let token = auth::create_token("user123", &config.jwt_secret).unwrap();
+async fn login(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let token = auth::create_token("user123", &state.config.jwt_secret).unwrap();
     Json(json!({"token": token}))
 }
 
@@ -52,13 +55,11 @@ async fn list_property(
     log::info!("Listing property: {:?}", new_property);
     let new_property_clone = new_property.clone();
     
-    // First, handle database insertion
     let _db_result = task::spawn_blocking({
-        let database_url = state.config.database_url.clone();
+        let pool = state.db_pool.clone();
         move || {
-            log::info!("Connecting to database: {}", database_url);
-            let mut conn = PgConnection::establish(&database_url)
-                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database connection error: {}", e)))?;
+            let mut conn = pool.get()
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database pool error: {}", e)))?;
             let now = chrono::Utc::now().timestamp();
             log::info!("Inserting property: {:?}", new_property);
             diesel::insert_into(schema::properties::table)
@@ -86,7 +87,6 @@ async fn list_property(
         (StatusCode::INTERNAL_SERVER_ERROR, format!("Task error: {}", e))
     })??;
 
-    // Handle Solana transaction in a blocking task
     let solana_result = task::spawn_blocking({
         let solana_rpc_url = state.config.solana_rpc_url.clone();
         let program_id = state.config.program_id.clone();
@@ -127,13 +127,16 @@ async fn make_offer(
     State(state): State<AppState>,
     Json(new_offer): Json<models::NewOffer>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    log::info!("Making offer: {:?}", new_offer);
     let new_offer_clone = new_offer.clone();
+    
     let _db_result = task::spawn_blocking({
-        let database_url = state.config.database_url.clone();
+        let pool = state.db_pool.clone();
         move || {
-            let mut conn = PgConnection::establish(&database_url)
-                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
+            let mut conn = pool.get()
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database pool error: {}", e)))?;
             let now = chrono::Utc::now().timestamp();
+            log::info!("Inserting offer: {:?}", new_offer);
             diesel::insert_into(schema::offers::table)
                 .values((
                     &new_offer,
@@ -143,26 +146,51 @@ async fn make_offer(
                 ))
                 .execute(&mut conn)
                 .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
+            log::info!("Offer inserted successfully");
             Ok(())
         }
     })
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Task error: {}", e)))??;
+    .map_err(|e| {
+        log::error!("Task spawn error: {}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, format!("Task error: {}", e))
+    })??;
 
-    let solana = solana::SolanaClient::new(&state.config.solana_rpc_url, &state.config.program_id)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Solana error: {}", e)))?;
-    let tx_response = solana.make_offer(
-        &new_offer_clone.property_id,
-        new_offer_clone.amount,
-        new_offer_clone.expiration_time,
-        &new_offer_clone.buyer_pubkey,
-    )
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Solana error: {}", e)))?;
+    let solana_result = task::spawn_blocking({
+        let solana_rpc_url = state.config.solana_rpc_url.clone();
+        let program_id = state.config.program_id.clone();
+        move || {
+            log::info!("Initializing Solana client");
+            let solana = solana::SolanaClient::new(&solana_rpc_url, &program_id)
+                .map_err(|e| {
+                    log::error!("Solana client init error: {}", e);
+                    (StatusCode::INTERNAL_SERVER_ERROR, format!("Solana error: {}", e))
+                })?;
+            log::info!("Calling Solana make_offer");
+            let tx_response = solana.make_offer(
+                &new_offer_clone.property_id,
+                new_offer_clone.amount,
+                new_offer_clone.expiration_time,
+                &new_offer_clone.buyer_pubkey,
+            )
+            .map_err(|e| {
+                log::error!("Solana make_offer error: {}", e);
+                (StatusCode::INTERNAL_SERVER_ERROR, format!("Solana error: {}", e))
+            })?;
+            log::info!("Offer prepared: {:?}", tx_response);
+            Ok(tx_response)
+        }
+    })
+    .await
+    .map_err(|e| {
+        log::error!("Solana task spawn error: {}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, format!("Task error: {}", e))
+    })??;
 
     Ok(Json(json!({
         "status": "Offer prepared",
-        "transaction": tx_response.transaction,
-        "message": tx_response.message,
+        "transaction": solana_result.transaction,
+        "message": solana_result.message,
     })))
 }
 
@@ -171,17 +199,20 @@ async fn respond_to_offer(
     State(state): State<AppState>,
     Json(response): Json<models::OfferResponse>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    log::info!("Responding to offer: {:?}", response);
+    
     let offer = task::spawn_blocking({
-        let database_url = state.config.database_url.clone();
+        let pool = state.db_pool.clone();
         move || {
-            let mut conn = PgConnection::establish(&database_url)
-                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
+            let mut conn = pool.get()
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database pool error: {}", e)))?;
             let offer: models::Offer = schema::offers::table
                 .filter(schema::offers::id.eq(response.offer_id))
                 .first(&mut conn)
                 .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
             let status = if response.accept { "accepted" } else { "rejected" };
             let now = chrono::Utc::now().timestamp();
+            log::info!("Updating offer status to '{}'", status);
             diesel::update(schema::offers::table.filter(schema::offers::id.eq(response.offer_id)))
                 .set((
                     schema::offers::status.eq(status),
@@ -189,22 +220,47 @@ async fn respond_to_offer(
                 ))
                 .execute(&mut conn)
                 .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
+            log::info!("Offer updated successfully");
             Ok(offer)
         }
     })
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Task error: {}", e)))??;
+    .map_err(|e| {
+        log::error!("Task spawn error: {}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, format!("Task error: {}", e))
+    })??;
 
-    let solana = solana::SolanaClient::new(&state.config.solana_rpc_url, &state.config.program_id)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Solana error: {}", e)))?;
-    let tx_response = solana.respond_to_offer(response.offer_id, response.accept, &offer.buyer_pubkey)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Solana error: {}", e)))?;
+    let solana_result = task::spawn_blocking({
+        let solana_rpc_url = state.config.solana_rpc_url.clone();
+        let program_id = state.config.program_id.clone();
+        move || {
+            log::info!("Initializing Solana client");
+            let solana = solana::SolanaClient::new(&solana_rpc_url, &program_id)
+                .map_err(|e| {
+                    log::error!("Solana client init error: {}", e);
+                    (StatusCode::INTERNAL_SERVER_ERROR, format!("Solana error: {}", e))
+                })?;
+            log::info!("Calling Solana respond_to_offer");
+            let tx_response = solana.respond_to_offer(response.offer_id, response.accept, &offer.buyer_pubkey)
+                .map_err(|e| {
+                    log::error!("Solana respond_to_offer error: {}", e);
+                    (StatusCode::INTERNAL_SERVER_ERROR, format!("Solana error: {}", e))
+                })?;
+            log::info!("Offer response prepared: {:?}", tx_response);
+            Ok(tx_response)
+        }
+    })
+    .await
+    .map_err(|e| {
+        log::error!("Solana task spawn error: {}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, format!("Task error: {}", e))
+    })??;
 
     let status = if response.accept { "accepted" } else { "rejected" };
     Ok(Json(json!({
         "status": format!("Offer {} prepared", status),
-        "transaction": tx_response.transaction,
-        "message": tx_response.message,
+        "transaction": solana_result.transaction,
+        "message": solana_result.message,
     })))
 }
 
@@ -213,12 +269,14 @@ async fn finalize_sale(
     State(state): State<AppState>,
     Json(sale): Json<models::SaleRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    log::info!("Finalizing sale: {:?}", sale);
     let property_id_clone = sale.property_id.clone();
+    
     let (offer, property) = task::spawn_blocking({
-        let database_url = state.config.database_url.clone();
+        let pool = state.db_pool.clone();
         move || {
-            let mut conn = PgConnection::establish(&database_url)
-                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
+            let mut conn = pool.get()
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database pool error: {}", e)))?;
             let offer: models::Offer = schema::offers::table
                 .filter(schema::offers::id.eq(sale.offer_id))
                 .first(&mut conn)
@@ -228,6 +286,7 @@ async fn finalize_sale(
                 .first(&mut conn)
                 .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
             let now = chrono::Utc::now().timestamp();
+            log::info!("Updating property and offer for sale");
             diesel::update(schema::properties::table.filter(schema::properties::property_id.eq(&sale.property_id)))
                 .set((
                     schema::properties::is_active.eq(false),
@@ -242,26 +301,51 @@ async fn finalize_sale(
                 ))
                 .execute(&mut conn)
                 .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
+            log::info!("Sale updates completed successfully");
             Ok((offer, property))
         }
     })
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Task error: {}", e)))??;
+    .map_err(|e| {
+        log::error!("Task spawn error: {}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, format!("Task error: {}", e))
+    })??;
 
-    let solana = solana::SolanaClient::new(&state.config.solana_rpc_url, &state.config.program_id)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Solana error: {}", e)))?;
-    let tx_response = solana.finalize_sale(
-        &property_id_clone,
-        sale.offer_id,
-        &offer.buyer_pubkey,
-        &property.owner_pubkey,
-    )
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Solana error: {}", e)))?;
+    let solana_result = task::spawn_blocking({
+        let solana_rpc_url = state.config.solana_rpc_url.clone();
+        let program_id = state.config.program_id.clone();
+        move || {
+            log::info!("Initializing Solana client");
+            let solana = solana::SolanaClient::new(&solana_rpc_url, &program_id)
+                .map_err(|e| {
+                    log::error!("Solana client init error: {}", e);
+                    (StatusCode::INTERNAL_SERVER_ERROR, format!("Solana error: {}", e))
+                })?;
+            log::info!("Calling Solana finalize_sale");
+            let tx_response = solana.finalize_sale(
+                &property_id_clone,
+                sale.offer_id,
+                &offer.buyer_pubkey,
+                &property.owner_pubkey,
+            )
+            .map_err(|e| {
+                log::error!("Solana finalize_sale error: {}", e);
+                (StatusCode::INTERNAL_SERVER_ERROR, format!("Solana error: {}", e))
+            })?;
+            log::info!("Sale prepared: {:?}", tx_response);
+            Ok(tx_response)
+        }
+    })
+    .await
+    .map_err(|e| {
+        log::error!("Solana task spawn error: {}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, format!("Task error: {}", e))
+    })??;
 
     Ok(Json(json!({
         "status": "Sale prepared",
-        "transaction": tx_response.transaction,
-        "message": tx_response.message,
+        "transaction": solana_result.transaction,
+        "message": solana_result.message,
     })))
 }
 
@@ -275,12 +359,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = config::AppConfig::load()?;
     log::info!("Loaded config: {:?}", config);
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], config.port));
+    let manager = ConnectionManager::<PgConnection>::new(&config.database_url);
+    let pool = r2d2::Pool::builder()
+        .max_size(15)
+        .build(manager)
+        .map_err(|e| format!("Failed to create pool: {}", e))?;
 
     let db_test: i32 = task::spawn_blocking({
-        let database_url = config.database_url.clone();
+        let pool = pool.clone();
         move || {
-            let mut conn = PgConnection::establish(&database_url)
+            let mut conn = pool.get()
                 .map_err(|e| diesel::result::Error::DatabaseError(
                     diesel::result::DatabaseErrorKind::UnableToSendCommand,
                     Box::new(e.to_string())
@@ -296,9 +384,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map_err(|e| format!("Failed to initialize Solana client: {}", e))?;
     log::info!("Solana program ID: {}", solana.get_program_id());
 
+    let addr = SocketAddr::from(([127, 0, 0, 1], config.port));
     log::info!("Starting server on {}", addr);
 
-    let state = AppState { config };
+    let state = AppState { config, db_pool: pool };
     let protected_routes = Router::new()
         .route("/properties", post(list_property))
         .route("/offers", post(make_offer))
