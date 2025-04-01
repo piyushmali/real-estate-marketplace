@@ -1,4 +1,4 @@
-use actix_web::{web, App, HttpResponse, HttpServer, Responder};
+use actix_web::{web, App, HttpResponse, HttpServer, Responder, middleware};
 use dotenv::dotenv;
 use serde::Deserialize;
 use std::env;
@@ -9,6 +9,7 @@ mod auth;
 mod db;
 mod models;
 mod schema;
+mod transactions;
 
 #[derive(Deserialize)]
 struct AuthRequest {
@@ -39,7 +40,7 @@ async fn health_check() -> impl Responder {
     HttpResponse::Ok().body("Real Estate Marketplace server is running!")
 }
 
-#[actix_web::main]
+#[tokio::main]  // Use Tokio's multi-threaded runtime
 async fn main() -> std::io::Result<()> {
     dotenv().ok();
     tracing_subscriber::fmt()
@@ -57,9 +58,13 @@ async fn main() -> std::io::Result<()> {
 
     HttpServer::new(|| {
         App::new()
+            .wrap(middleware::Logger::default())
             .route("/health", web::get().to(health_check))
             .route("/api/auth", web::post().to(authenticate))
+            .route("/api/transactions/prepare/list-property", web::post().to(transactions::prepare_list_property))
+            .route("/api/transactions/submit", web::post().to(transactions::submit_transaction))
     })
+    .workers(16)  // Explicitly set the number of worker threads
     .bind(("127.0.0.1", port))?
     .run()
     .await
