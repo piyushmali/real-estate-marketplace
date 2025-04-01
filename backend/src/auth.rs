@@ -1,9 +1,11 @@
-// backend/src/auth.rs
 use chrono::{Duration, Utc};
 use diesel::prelude::*;
 use jsonwebtoken::{encode, EncodingKey, Header};
 use serde::{Deserialize, Serialize};
+use solana_sdk::pubkey::Pubkey;
+use solana_sdk::signature::Signature;
 use std::env;
+use std::str::FromStr;
 use uuid::Uuid;
 
 use crate::db;
@@ -35,8 +37,26 @@ pub fn generate_jwt(wallet_address: &str) -> Result<String, jsonwebtoken::errors
     )
 }
 
-pub fn verify_wallet_signature(_wallet_address: &str, _signature: &str, _message: &str) -> bool {
-    true // Placeholder: Implement Solana signature verification later
+pub fn verify_wallet_signature(wallet_address: &str, signature: &str, message: &str) -> bool {
+    let pubkey = match Pubkey::from_str(wallet_address) {
+        Ok(pubkey) => pubkey,
+        Err(_) => return false,
+    };
+
+    let signature_bytes = match bs58::decode(signature).into_vec() {
+        Ok(bytes) => bytes,
+        Err(_) => return false,
+    };
+
+    // Ensure the signature is exactly 64 bytes
+    let signature_array: [u8; 64] = match signature_bytes.try_into() {
+        Ok(array) => array,
+        Err(_) => return false, // Return false if the length is not 64
+    };
+
+    let signature = Signature::from(signature_array);
+
+    signature.verify(&pubkey.to_bytes(), message.as_bytes())
 }
 
 pub fn store_user_jwt(wallet_address: &str, jwt: &str) -> Result<(), diesel::result::Error> {
@@ -47,6 +67,7 @@ pub fn store_user_jwt(wallet_address: &str, jwt: &str) -> Result<(), diesel::res
         jwt_token: Some(jwt.to_string()),
     };
 
+    // Replace the existing JWT for the wallet address
     diesel::insert_into(users::table)
         .values(&new_user)
         .on_conflict(users::wallet_address)

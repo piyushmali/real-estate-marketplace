@@ -11,23 +11,24 @@ mod models;
 mod schema;
 
 #[derive(Deserialize)]
-struct LoginRequest {
-    wallet_address: String,
+struct AuthRequest {
+    public_key: String,
     signature: String,
-    message: String,
+    timestamp: i64,
 }
 
-async fn login(req: web::Json<LoginRequest>) -> impl Responder {
-    if auth::verify_wallet_signature(&req.wallet_address, &req.signature, &req.message) {
-        match auth::generate_jwt(&req.wallet_address) {
+async fn authenticate(req: web::Json<AuthRequest>) -> impl Responder {
+    let message = format!("Timestamp: {}", req.timestamp);
+    if auth::verify_wallet_signature(&req.public_key, &req.signature, &message) {
+        match auth::generate_jwt(&req.public_key) {
             Ok(token) => {
-                if let Err(e) = auth::store_user_jwt(&req.wallet_address, &token) {
+                if let Err(e) = auth::store_user_jwt(&req.public_key, &token) {
                     return HttpResponse::InternalServerError()
                         .body(format!("Failed to store JWT: {}", e));
                 }
                 HttpResponse::Ok().json(serde_json::json!({"token": token}))
             }
-            Err(_) => HttpResponse::InternalServerError().body("Failed to generate JWT"),
+            Err(e) => HttpResponse::InternalServerError().body(format!("Failed to generate JWT: {}", e)),
         }
     } else {
         HttpResponse::Unauthorized().body("Invalid signature")
@@ -35,7 +36,7 @@ async fn login(req: web::Json<LoginRequest>) -> impl Responder {
 }
 
 async fn health_check() -> impl Responder {
-    HttpResponse::Ok().body("Server is running!")
+    HttpResponse::Ok().body("Real Estate Marketplace server is running!")
 }
 
 #[actix_web::main]
@@ -52,12 +53,12 @@ async fn main() -> std::io::Result<()> {
         .parse::<u16>()
         .expect("PORT must be a valid u16");
 
-    info!("Starting server on port {}", port);
+    info!("Starting Real Estate Marketplace server on port {}", port);
 
     HttpServer::new(|| {
         App::new()
             .route("/health", web::get().to(health_check))
-            .route("/auth/login", web::post().to(login))
+            .route("/api/auth", web::post().to(authenticate))
     })
     .bind(("127.0.0.1", port))?
     .run()
