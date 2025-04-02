@@ -1,4 +1,5 @@
 use actix_web::{web, App, HttpResponse, HttpServer, Responder};
+use actix_cors::Cors; 
 use dotenv::dotenv;
 use serde::Deserialize;
 use std::env;
@@ -56,7 +57,19 @@ async fn main() -> std::io::Result<()> {
     info!("Starting Real Estate Marketplace server on port {}", port);
 
     HttpServer::new(|| {
+        // Configure CORS
+        let cors = Cors::default()
+            .allow_any_origin()  // In production, you might want to specify specific origins
+            .allowed_methods(vec!["GET", "POST"])
+            .allowed_headers(vec![
+                actix_web::http::header::AUTHORIZATION,
+                actix_web::http::header::ACCEPT,
+                actix_web::http::header::CONTENT_TYPE,
+            ])
+            .max_age(3600);
+
         App::new()
+            .wrap(cors)  // Add CORS middleware
             .route("/health", web::get().to(health_check))
             .route("/api/auth", web::post().to(authenticate))
     })

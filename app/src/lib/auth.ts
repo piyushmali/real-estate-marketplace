@@ -1,4 +1,5 @@
 // src/lib/auth.ts
+import { token } from "@coral-xyz/anchor/dist/cjs/utils";
 import bs58 from "bs58";
 
 export interface AuthPayload {
@@ -56,6 +57,8 @@ export const authenticateWithBackend = async (payload: AuthPayload): Promise<str
 export const storeToken = (token: string) => {
   localStorage.setItem("jwt_token", token);
 };
+
+// console.log(token)
 
 // Utility to retrieve JWT from local storage
 export const getToken = (): string | null => {

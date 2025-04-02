@@ -8,7 +8,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useProperties } from "@/hooks/useProperties";
 import { PropertyCard } from "@/components/PropertyCard";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/ui/Badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import "@solana/wallet-adapter-react-ui/styles.css";
