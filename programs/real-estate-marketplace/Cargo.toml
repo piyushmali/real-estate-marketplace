@@ -19,5 +19,6 @@ init-if-needed = ["anchor-lang/init-if-needed"]
 
 [dependencies]
 anchor-lang = { version = "0.30.1", features = ["init-if-needed"] }
-anchor-spl = "0.30.1"
+anchor-spl = { version = "0.30.1", features = ["metadata"] }
 solana-program = "~1.18.0"
+mpl-token-metadata = "4.1.2"
