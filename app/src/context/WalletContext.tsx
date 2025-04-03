@@ -1,83 +1,92 @@
-import React, { createContext, useState, useEffect } from 'react';
-import { Connection, PublicKey, Keypair } from '@solana/web3.js';
-import { useSolanaWallet } from '@/hooks/useSolanaWallet';
-import bs58 from 'bs58';
+import { createContext, useState, useEffect, ReactNode } from "react";
 
 interface WalletContextType {
-  wallet: {
-    publicKey: PublicKey;
-  } | null;
-  connectWallet: () => Promise<void>;
-  disconnectWallet: () => void;
-  signMessage: (message: string) => Promise<string>;
-  isConnecting: boolean;
+  connected: boolean;
+  publicKey: string | null;
+  connect: () => Promise<void>;
+  disconnect: () => Promise<void>;
 }
 
 export const WalletContext = createContext<WalletContextType>({
-  wallet: null,
-  connectWallet: async () => {},
-  disconnectWallet: () => {},
-  signMessage: async () => '',
-  isConnecting: false,
+  connected: false,
+  publicKey: null,
+  connect: async () => {},
+  disconnect: async () => {},
 });
 
 interface WalletContextProviderProps {
-  children: React.ReactNode;
+  children: ReactNode;
 }
 
-export const WalletContextProvider: React.FC<WalletContextProviderProps> = ({ children }) => {
-  const [isConnecting, setIsConnecting] = useState(false);
-  const { 
-    connect, 
-    disconnect, 
-    signMessage: signWalletMessage,
-    wallet,
-    connected,
-    publicKey
-  } = useSolanaWallet();
-  
-  const connectWallet = async () => {
-    try {
-      setIsConnecting(true);
-      await connect();
-    } catch (error) {
-      console.error('Error connecting wallet:', error);
-      throw error;
-    } finally {
-      setIsConnecting(false);
-    }
-  };
-  
-  const disconnectWallet = () => {
-    disconnect();
-  };
-  
-  const signMessage = async (message: string): Promise<string> => {
-    try {
-      if (!wallet || !publicKey) {
-        throw new Error('Wallet not connected');
+export const WalletContextProvider = ({ children }: WalletContextProviderProps) => {
+  const [connected, setConnected] = useState(false);
+  const [publicKey, setPublicKey] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Check if wallet is already connected
+    const checkConnection = async () => {
+      if (window.solana && window.solana.isPhantom) {
+        try {
+          if (window.solana.isConnected) {
+            setConnected(true);
+            setPublicKey(window.solana.publicKey.toBase58());
+          }
+        } catch (error) {
+          console.error("Error checking wallet connection:", error);
+        }
       }
-      
-      const messageBuffer = new TextEncoder().encode(message);
-      const signatureBytes = await signWalletMessage(messageBuffer);
-      
-      return bs58.encode(signatureBytes);
+    };
+
+    checkConnection();
+
+    // Listen for connection events
+    const handleConnect = () => {
+      if (window.solana && window.solana.isConnected) {
+        setConnected(true);
+        setPublicKey(window.solana.publicKey.toBase58());
+      }
+    };
+
+    const handleDisconnect = () => {
+      setConnected(false);
+      setPublicKey(null);
+    };
+
+    window.addEventListener("solana#connect", handleConnect);
+    window.addEventListener("solana#disconnect", handleDisconnect);
+
+    return () => {
+      window.removeEventListener("solana#connect", handleConnect);
+      window.removeEventListener("solana#disconnect", handleDisconnect);
+    };
+  }, []);
+
+  const connect = async () => {
+    if (!window.solana || !window.solana.isPhantom) {
+      window.open("https://phantom.app/", "_blank");
+      throw new Error("Phantom wallet not installed");
+    }
+
+    try {
+      const response = await window.solana.connect();
+      setConnected(true);
+      setPublicKey(response.publicKey.toBase58());
     } catch (error) {
-      console.error('Error signing message:', error);
+      console.error("Error connecting to wallet:", error);
       throw error;
     }
   };
-  
-  const walletContext: WalletContextType = {
-    wallet: publicKey ? { publicKey } : null,
-    connectWallet,
-    disconnectWallet,
-    signMessage,
-    isConnecting
+
+  const disconnect = async () => {
+    if (window.solana && window.solana.isConnected) {
+      await window.solana.disconnect();
+      setConnected(false);
+      setPublicKey(null);
+    }
   };
-  
+
   return (
-    <WalletContext.Provider value={walletContext}>
+    <WalletContext.Provider value={{ connected, publicKey, connect, disconnect }}>
       {children}
     </WalletContext.Provider>
   );

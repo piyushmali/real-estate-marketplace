@@ -8,6 +8,7 @@ import {
   SheetContent,
   SheetTrigger
 } from "@/components/ui/sheet";
+import { Navbar } from "./Navbar";
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -26,76 +27,7 @@ export default function Layout({ children }: LayoutProps) {
   return (
     <div className="min-h-screen flex flex-col">
       {/* Navbar */}
-      <nav className="bg-white shadow-sm sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
-            <div className="flex items-center">
-              <div className="flex-shrink-0 flex items-center">
-                {/* Logo */}
-                <svg className="h-8 w-8 text-primary" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 2L1 12h3v8h6v-6h4v6h6v-8h3L12 2z" />
-                </svg>
-                <span className="ml-2 text-xl font-semibold text-primary">SolEstate</span>
-              </div>
-              
-              {/* Desktop nav links */}
-              <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
-                {navLinks.map((link) => (
-                  <Link key={link.path} href={link.path}>
-                    <a className={`
-                      px-1 pt-1 inline-flex items-center text-sm font-medium border-b-2
-                      ${link.active 
-                        ? 'border-primary text-neutral-900' 
-                        : 'border-transparent text-neutral-500 hover:text-neutral-700 hover:border-neutral-300'}
-                    `}>
-                      {link.name}
-                    </a>
-                  </Link>
-                ))}
-              </div>
-            </div>
-            
-            {/* Right side actions */}
-            <div className="flex items-center space-x-4">
-              <WalletConnectButton />
-              
-              {/* Mobile menu button */}
-              <Sheet>
-                <SheetTrigger asChild>
-                  <Button variant="ghost" size="icon" className="sm:hidden">
-                    <Menu className="h-5 w-5" />
-                    <span className="sr-only">Open main menu</span>
-                  </Button>
-                </SheetTrigger>
-                <SheetContent side="left" className="w-[240px] sm:w-[300px]">
-                  <div className="py-6 px-2">
-                    <div className="flex items-center mb-6">
-                      <svg className="h-8 w-8 text-primary" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M12 2L1 12h3v8h6v-6h4v6h6v-8h3L12 2z" />
-                      </svg>
-                      <span className="ml-2 text-xl font-semibold text-primary">SolEstate</span>
-                    </div>
-                    <div className="space-y-1">
-                      {navLinks.map((link) => (
-                        <Link key={link.path} href={link.path}>
-                          <a className={`
-                            block px-3 py-2 text-base font-medium rounded-md border-l-4
-                            ${link.active 
-                              ? 'bg-primary-50 border-primary text-primary-700' 
-                              : 'border-transparent text-neutral-500 hover:bg-neutral-50 hover:border-neutral-300 hover:text-neutral-700'}
-                          `}>
-                            {link.name}
-                          </a>
-                        </Link>
-                      ))}
-                    </div>
-                  </div>
-                </SheetContent>
-              </Sheet>
-            </div>
-          </div>
-        </div>
-      </nav>
+      <Navbar />
       
       <main className="flex-1">
         {children}
@@ -119,27 +51,27 @@ export default function Layout({ children }: LayoutProps) {
               <div>
                 <h3 className="text-sm font-semibold text-neutral-700 tracking-wider uppercase">Marketplace</h3>
                 <ul className="mt-4 space-y-2">
-                  <li><Link href="/"><a className="text-sm text-neutral-500 hover:text-neutral-700">Browse Properties</a></Link></li>
-                  <li><a href="#" className="text-sm text-neutral-500 hover:text-neutral-700">List a Property</a></li>
-                  <li><Link href="/my-offers"><a className="text-sm text-neutral-500 hover:text-neutral-700">My Offers</a></Link></li>
+                  <li><Link href="/"><span className="text-sm text-neutral-500 hover:text-neutral-700 cursor-pointer">Browse Properties</span></Link></li>
+                  <li><span className="text-sm text-neutral-500 hover:text-neutral-700 cursor-pointer">List a Property</span></li>
+                  <li><Link href="/my-offers"><span className="text-sm text-neutral-500 hover:text-neutral-700 cursor-pointer">My Offers</span></Link></li>
                 </ul>
               </div>
               
               <div>
                 <h3 className="text-sm font-semibold text-neutral-700 tracking-wider uppercase">Resources</h3>
                 <ul className="mt-4 space-y-2">
-                  <li><a href="#" className="text-sm text-neutral-500 hover:text-neutral-700">Documentation</a></li>
+                  <li><span className="text-sm text-neutral-500 hover:text-neutral-700 cursor-pointer">Documentation</span></li>
                   <li><a href="https://docs.solana.com" target="_blank" rel="noopener noreferrer" className="text-sm text-neutral-500 hover:text-neutral-700">Solana Guides</a></li>
-                  <li><a href="#" className="text-sm text-neutral-500 hover:text-neutral-700">FAQs</a></li>
+                  <li><span className="text-sm text-neutral-500 hover:text-neutral-700 cursor-pointer">FAQs</span></li>
                 </ul>
               </div>
               
               <div>
                 <h3 className="text-sm font-semibold text-neutral-700 tracking-wider uppercase">Legal</h3>
                 <ul className="mt-4 space-y-2">
-                  <li><a href="#" className="text-sm text-neutral-500 hover:text-neutral-700">Privacy Policy</a></li>
-                  <li><a href="#" className="text-sm text-neutral-500 hover:text-neutral-700">Terms of Service</a></li>
-                  <li><a href="#" className="text-sm text-neutral-500 hover:text-neutral-700">Contact Us</a></li>
+                  <li><span className="text-sm text-neutral-500 hover:text-neutral-700 cursor-pointer">Privacy Policy</span></li>
+                  <li><span className="text-sm text-neutral-500 hover:text-neutral-700 cursor-pointer">Terms of Service</span></li>
+                  <li><span className="text-sm text-neutral-500 hover:text-neutral-700 cursor-pointer">Contact Us</span></li>
                 </ul>
               </div>
             </div>
