@@ -13,9 +13,9 @@ use crate::models::User;
 use crate::schema::users;
 
 #[derive(Debug, Serialize, Deserialize)]
-struct Claims {
-    sub: String, // Wallet address
-    exp: usize,  // Expiration time
+pub struct Claims {
+    pub sub: String, // Wallet address
+    pub exp: usize,  // Expiration time
 }
 
 pub fn generate_jwt(wallet_address: &str) -> Result<String, jsonwebtoken::errors::Error> {

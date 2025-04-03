@@ -10,6 +10,7 @@ mod auth;
 mod db;
 mod models;
 mod schema;
+mod transaction;
 
 #[derive(Deserialize)]
 struct AuthRequest {
@@ -72,6 +73,9 @@ async fn main() -> std::io::Result<()> {
             .wrap(cors)  // Add CORS middleware
             .route("/health", web::get().to(health_check))
             .route("/api/auth", web::post().to(authenticate))
+            .route("/api/transactions/submit", web::post().to(transaction::submit_transaction))
+            .route("/api/blockhash", web::get().to(transaction::get_recent_blockhash))
+            .route("/api/instructions/submit", web::post().to(transaction::submit_instructions))
     })
     .bind(("127.0.0.1", port))?
     .run()

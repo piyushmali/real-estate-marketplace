@@ -9,13 +9,13 @@ skip-lint = false
 real_estate_marketplace = "BdSKkquiFKRqxbXYC3Jufz9K59xisZ33VNbyaigkStW6"
 
 [programs.localnet]
-real_estate_marketplace = "DDnkLJvWSt2FufL76mrE6jmXKNk8wiRnmrLGasCrNocn"
+real_estate_marketplace = "BdSKkquiFKRqxbXYC3Jufz9K59xisZ33VNbyaigkStW6"
 
 [registry]
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "Localnet"
+cluster = "devnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
