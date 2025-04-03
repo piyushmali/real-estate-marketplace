@@ -13,6 +13,8 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { PropertyFormData } from "@/lib/api";
+import { useWallet } from "@solana/wallet-adapter-react";
 
 const propertyFormSchema = z.object({
   price: z.string().transform((val) => Number(val)),
@@ -21,6 +23,7 @@ const propertyFormSchema = z.object({
   bedrooms: z.string().transform((val) => Number(val)),
   bathrooms: z.string().transform((val) => Number(val)),
   metadata_uri: z.string().url("Please enter a valid image URL"),
+  property_id: z.string().min(1, "Property ID is required"),
 });
 
 type PropertyFormValues = z.infer<typeof propertyFormSchema>;
@@ -30,6 +33,7 @@ interface PropertyFormProps {
 }
 
 export function PropertyForm({ onSubmit }: PropertyFormProps) {
+  const { publicKey } = useWallet();
   const form = useForm<PropertyFormValues>({
     resolver: zodResolver(propertyFormSchema),
     defaultValues: {
@@ -39,6 +43,7 @@ export function PropertyForm({ onSubmit }: PropertyFormProps) {
       bedrooms: "",
       bathrooms: "",
       metadata_uri: "",
+      property_id: "",
     },
   });
 
@@ -50,6 +55,19 @@ export function PropertyForm({ onSubmit }: PropertyFormProps) {
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6 w-full max-w-2xl mx-auto p-6 bg-white rounded-xl shadow-sm">
+        <FormField
+          control={form.control}
+          name="property_id"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Property ID</FormLabel>
+              <FormControl>
+                <Input placeholder="Enter unique property ID" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
         <FormField
           control={form.control}
           name="price"

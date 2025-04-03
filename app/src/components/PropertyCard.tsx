@@ -3,26 +3,23 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/button";
 import { Home, Bed, Bath, ArrowRight, MapPin, Edit, DollarSign, CheckCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useWallet } from "@/hooks/useWallet";
+import { useWallet } from "@solana/wallet-adapter-react";
 import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-
-import { Property, Offer } from "@/lib/mockData";
+import { Property } from "@/lib/api";
 
 interface PropertyCardProps {
   property: Property;
   onUpdateProperty?: (property: Property) => void;
   onMakeOffer?: (property: Property) => void;
-  onExecuteSale?: (property: Property, offer: Offer) => void;
-  offers?: Offer[];
 }
 
-export const PropertyCard = ({ property, onUpdateProperty, onMakeOffer, onExecuteSale, offers = [] }: PropertyCardProps) => {
+export const PropertyCard = ({ property, onUpdateProperty, onMakeOffer }: PropertyCardProps) => {
   const { publicKey } = useWallet();
   const [showActions, setShowActions] = useState(false);
   
-  const isOwner = publicKey?.toBase58() === property.owner.toBase58();
-  const hasPendingOffers = offers.some(offer => offer.status === 'Pending');
+  const isOwner = publicKey?.toString() === property.owner_wallet;
+  
   // Generate a random gradient for each property card
   const gradientColors = [
     "from-blue-500 to-purple-600",
@@ -53,17 +50,6 @@ export const PropertyCard = ({ property, onUpdateProperty, onMakeOffer, onExecut
                 <Edit className="h-4 w-4" />
                 Update
               </Button>
-              {hasPendingOffers && (
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  className="flex items-center gap-1 bg-white/90"
-                  onClick={() => onExecuteSale?.(property, offers[0])}
-                >
-                  <CheckCircle className="h-4 w-4" />
-                  Execute Sale
-                </Button>
-              )}
             </>
           ) : (
             <Button
@@ -85,7 +71,7 @@ export const PropertyCard = ({ property, onUpdateProperty, onMakeOffer, onExecut
           alt={`Property in ${property.location}`}
           className="w-full h-full object-cover"
           onError={(e) => {
-            e.currentTarget.src = "/api/placeholder/400/200";
+            e.currentTarget.src = "https://wallpaperaccess.com/full/2315968.jpg";
           }}
         />
         <Badge className="absolute top-3 right-3 bg-white/90 text-black font-bold text-sm px-3 py-1 rounded-full shadow-md">
@@ -116,6 +102,7 @@ export const PropertyCard = ({ property, onUpdateProperty, onMakeOffer, onExecut
           </div>
         </div>
         <p className="text-xs text-gray-500 mt-3 font-mono">ID: {property.property_id}</p>
+        <p className="text-xs text-gray-400 mt-1">Owner: {property.owner_wallet.substring(0, 8)}...</p>
       </CardContent>
       
       <CardFooter className="pt-3 pb-4 px-4 border-t mt-auto">

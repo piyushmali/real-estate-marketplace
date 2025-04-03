@@ -8,6 +8,7 @@ use tracing_subscriber;
 
 mod auth;
 mod db;
+mod handlers;
 mod models;
 mod schema;
 
@@ -47,6 +48,10 @@ async fn main() -> std::io::Result<()> {
         .with_max_level(tracing::Level::INFO)
         .init();
 
+    let port = env::var("PORT").unwrap_or_else(|_| "8080".to_string());
+    let address = format!("127.0.0.1:{}", port);
+    info!("Server running at http://{}", address);
+
     let _conn = db::establish_connection();
 
     let port = env::var("PORT")
@@ -72,6 +77,8 @@ async fn main() -> std::io::Result<()> {
             .wrap(cors)  // Add CORS middleware
             .route("/health", web::get().to(health_check))
             .route("/api/auth", web::post().to(authenticate))
+            .route("/api/properties", web::get().to(handlers::get_properties))
+            .route("/api/properties", web::post().to(handlers::create_property))
     })
     .bind(("127.0.0.1", port))?
     .run()
