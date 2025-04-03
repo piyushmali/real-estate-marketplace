@@ -1,68 +1,52 @@
-import { useState, useEffect, useContext } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { WalletContext } from "@/context/WalletContext";
-import { useToast } from "@/hooks/use-toast";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { formatWalletAddress } from "@/lib/utils";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ExternalLink } from "lucide-react";
+import { useWallet } from "@/hooks/useWallet";
+
+// Mock offer data
+const mockOffers = [
+  {
+    id: "offer1",
+    property_id: "PROP-12345",
+    property_location: "123 Main St, New York, NY",
+    seller_wallet: "HN7cABqLq46Es1jh92dQQisAq662SmxELLLsHHe4YWrH",
+    price: 240000,
+    status: "Pending",
+    created_at: new Date().getTime() - 2 * 24 * 60 * 60 * 1000,
+  },
+  {
+    id: "offer2",
+    property_id: "PROP-67890",
+    property_location: "456 Oak Ave, Miami, FL",
+    seller_wallet: "2q7pyhPwAwZ3QMfZrnAbDhnh9mDUqycszcpf86VgQxhD",
+    price: 435000,
+    status: "Accepted",
+    created_at: new Date().getTime() - 5 * 24 * 60 * 60 * 1000,
+  },
+];
+
+// Helper function to format wallet addresses
+const formatWalletAddress = (address: string) => {
+  if (!address) return '';
+  return `${address.substring(0, 4)}...${address.substring(address.length - 4)}`;
+};
 
 export default function MyOffers() {
-  const { wallet } = useContext(WalletContext);
-  const { toast } = useToast();
-  const [currentPage, setCurrentPage] = useState(1);
-  const resultsPerPage = 10;
+  const { connected, publicKey } = useWallet();
+  const [isLoading, setIsLoading] = useState(true);
   
-  // Fetch offers for connected wallet
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['/api/offers/buyer', wallet?.publicKey?.toString(), currentPage],
-    queryFn: async () => {
-      if (!wallet?.publicKey) {
-        throw new Error('Wallet not connected');
-      }
-      
-      const response = await fetch(`/api/offers/buyer/${wallet.publicKey.toString()}?page=${currentPage}&limit=${resultsPerPage}`);
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch offers');
-      }
-      
-      return response.json();
-    },
-    enabled: !!wallet?.publicKey,
-  });
-  
+  // Simulate loading state
   useEffect(() => {
-    if (error) {
-      toast({
-        title: "Error fetching offers",
-        description: error instanceof Error ? error.message : "Unknown error occurred",
-        variant: "destructive",
-      });
-    }
-  }, [error, toast]);
+    const timer = setTimeout(() => {
+      setIsLoading(false);
+    }, 1000);
+    
+    return () => clearTimeout(timer);
+  }, []);
   
-  const offers = data?.offers || [];
-  
-  // Helper function to get status badge variant
-  const getStatusBadgeVariant = (status: string) => {
-    switch (status.toLowerCase()) {
-      case 'pending':
-        return 'warning';
-      case 'accepted':
-        return 'success';
-      case 'rejected':
-        return 'destructive';
-      case 'expired':
-        return 'default';
-      default:
-        return 'outline';
-    }
-  };
-  
-  if (!wallet?.publicKey) {
+  if (!connected) {
     return (
       <div className="max-w-7xl mx-auto py-12 px-4 sm:px-6 lg:px-8 text-center">
         <div className="bg-white p-8 rounded-lg shadow-sm">
@@ -92,7 +76,7 @@ export default function MyOffers() {
       <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         <Card>
           <CardHeader>
-            <CardTitle>Your Submitted Offers</CardTitle>
+            <CardTitle>Your Sent Offers</CardTitle>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -101,7 +85,7 @@ export default function MyOffers() {
                   <div key={i} className="h-12 bg-neutral-100 rounded"></div>
                 ))}
               </div>
-            ) : offers.length === 0 ? (
+            ) : mockOffers.length === 0 ? (
               <div className="text-center py-8">
                 <h3 className="text-lg font-medium text-neutral-900">No offers found</h3>
                 <p className="mt-2 text-sm text-neutral-600">You haven't made any offers yet</p>
@@ -111,39 +95,49 @@ export default function MyOffers() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Property ID</TableHead>
-                      <TableHead>Amount</TableHead>
+                      <TableHead>Property</TableHead>
+                      <TableHead>Seller</TableHead>
+                      <TableHead>Price</TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead>Created</TableHead>
-                      <TableHead>Expires</TableHead>
+                      <TableHead>Date</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {offers.map((offer) => {
-                      const createdDate = new Date(offer.created_at).toLocaleDateString();
-                      const expiresDate = new Date(offer.expiration_time).toLocaleDateString();
+                    {mockOffers.map((offer) => {
+                      const offerDate = new Date(offer.created_at).toLocaleDateString();
                       
                       return (
                         <TableRow key={offer.id}>
-                          <TableCell className="font-mono">
-                            {formatWalletAddress(offer.property_id, 6, 4)}
+                          <TableCell>
+                            <div>
+                              <div className="font-semibold">{formatWalletAddress(offer.property_id)}</div>
+                              <div className="text-sm text-gray-500">{offer.property_location}</div>
+                            </div>
                           </TableCell>
                           <TableCell className="font-mono">
-                            {(offer.amount / 1000000000).toFixed(2)} SOL
+                            {formatWalletAddress(offer.seller_wallet)}
                           </TableCell>
                           <TableCell>
-                            <Badge variant={getStatusBadgeVariant(offer.status)}>
-                              {offer.status}
-                            </Badge>
+                            ${offer.price.toLocaleString()}
                           </TableCell>
-                          <TableCell>{createdDate}</TableCell>
-                          <TableCell>{expiresDate}</TableCell>
+                          <TableCell>
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                              offer.status === "Pending" 
+                                ? "bg-yellow-100 text-yellow-800" 
+                                : offer.status === "Accepted" 
+                                  ? "bg-green-100 text-green-800"
+                                  : "bg-gray-100 text-gray-800"
+                            }`}>
+                              {offer.status}
+                            </span>
+                          </TableCell>
+                          <TableCell>{offerDate}</TableCell>
                           <TableCell className="text-right">
                             <Button 
                               variant="ghost" 
                               size="sm"
-                              onClick={() => window.open(`https://explorer.solana.com/address/${offer.property_id}`, '_blank')}
+                              onClick={() => {}}
                             >
                               <ExternalLink className="h-4 w-4 mr-1" />
                               View

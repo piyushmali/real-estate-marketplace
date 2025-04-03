@@ -1,64 +1,18 @@
-import { useState, useEffect, useContext } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { PropertyGrid } from "@/components/PropertyGrid";
-import { Pagination } from "@/components/Pagination";
-import { WalletContext } from "@/context/WalletContext";
-import { Button } from "@/components/ui/button";
-import { Plus } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
+import { useProperties } from "@/context/PropertyContext";
+import { PropertyCard } from "@/components/PropertyCard";
+import { useAuth } from "@/hooks/useAuth";
+import { useWallet } from "@/hooks/useWallet";
 
 export default function MyProperties() {
-  const { wallet } = useContext(WalletContext);
-  const { toast } = useToast();
-  const [currentPage, setCurrentPage] = useState(1);
-  const resultsPerPage = 8;
+  const { properties, isLoading } = useProperties();
+  const { connected, publicKey } = useWallet();
   
-  // Fetch properties for connected wallet
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['/api/properties/owner', wallet?.publicKey?.toString(), currentPage],
-    queryFn: async () => {
-      if (!wallet?.publicKey) {
-        throw new Error('Wallet not connected');
-      }
-      
-      const response = await fetch(`/api/properties/owner/${wallet.publicKey.toString()}?page=${currentPage}&limit=${resultsPerPage}`);
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch properties');
-      }
-      
-      return response.json();
-    },
-    enabled: !!wallet?.publicKey,
-  });
+  // Filter properties owned by the current user
+  const myProperties = publicKey 
+    ? properties.filter(p => p.owner.toString() === publicKey)
+    : [];
   
-  useEffect(() => {
-    if (error) {
-      toast({
-        title: "Error fetching properties",
-        description: error instanceof Error ? error.message : "Unknown error occurred",
-        variant: "destructive",
-      });
-    }
-  }, [error, toast]);
-  
-  const properties = data?.properties || [];
-  const totalResults = data?.total || 0;
-  const totalPages = Math.ceil(totalResults / resultsPerPage);
-  
-  const handlePageChange = (page: number) => {
-    setCurrentPage(page);
-    window.scrollTo(0, 0);
-  };
-  
-  const handleListProperty = () => {
-    toast({
-      title: "Feature coming soon",
-      description: "Property listing will be available in a future update"
-    });
-  };
-  
-  if (!wallet?.publicKey) {
+  if (!connected) {
     return (
       <div className="max-w-7xl mx-auto py-12 px-4 sm:px-6 lg:px-8 text-center">
         <div className="bg-white p-8 rounded-lg shadow-sm">
@@ -80,36 +34,29 @@ export default function MyProperties() {
                 My Properties
               </h2>
             </div>
-            <div className="mt-4 flex md:mt-0 md:ml-4">
-              <Button onClick={handleListProperty} variant="secondary" className="bg-amber-500 hover:bg-amber-600 text-white">
-                <Plus className="h-4 w-4 mr-1" />
-                List Property
-              </Button>
-            </div>
           </div>
         </div>
       </div>
       
       {/* Main content */}
       <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        <PropertyGrid properties={properties} isLoading={isLoading} />
-        
-        {!isLoading && totalResults === 0 && (
-          <div className="mt-6 text-center py-10 bg-white rounded-lg shadow">
-            <h3 className="text-lg font-medium text-neutral-900">No properties found</h3>
-            <p className="mt-2 text-sm text-neutral-600">You don't have any properties listed yet</p>
-            <Button onClick={handleListProperty} className="mt-4" variant="secondary">List a Property</Button>
+        {isLoading ? (
+          <div className="grid gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="bg-gray-100 rounded-lg h-72 animate-pulse"></div>
+            ))}
           </div>
-        )}
-        
-        {!isLoading && totalPages > 0 && (
-          <Pagination
-            currentPage={currentPage}
-            totalPages={totalPages}
-            onPageChange={handlePageChange}
-            totalResults={totalResults}
-            resultsPerPage={resultsPerPage}
-          />
+        ) : myProperties.length === 0 ? (
+          <div className="text-center py-16 bg-white rounded-lg shadow">
+            <h3 className="text-xl font-semibold text-gray-700">You don't have any properties</h3>
+            <p className="mt-2 text-gray-500">Your listed properties will appear here</p>
+          </div>
+        ) : (
+          <div className="grid gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {myProperties.map((property) => (
+              <PropertyCard key={property.property_id} property={property} />
+            ))}
+          </div>
         )}
       </div>
     </>

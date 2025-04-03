@@ -1,141 +1,71 @@
-import { useState, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { FilterSection } from "@/components/FilterSection";
+import { useState } from "react";
+import { useAuth } from "@/hooks/useAuth";
 import { PropertyGrid } from "@/components/PropertyGrid";
-import { Pagination } from "@/components/Pagination";
-import { Property } from "@shared/schema";
-import { Plus } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { useToast } from "@/hooks/use-toast";
+import { PropertyForm } from "@/components/PropertyForm";
+import { Modal } from "@/components/Modal";
+import { PropertyProvider } from "@/context/PropertyContext";
 
 export default function Marketplace() {
-  const { toast } = useToast();
-  const [currentPage, setCurrentPage] = useState(1);
-  const [filters, setFilters] = useState({
-    location: "",
-    priceRange: "",
-    bedrooms: "",
-    bathrooms: "",
-    squareFeet: "",
-  });
+  const { isAuthenticated } = useAuth();
+  const [showPropertyForm, setShowPropertyForm] = useState(false);
   
-  const resultsPerPage = 8;
-  
-  // Parse filter values
-  const getApiFilters = () => {
-    const apiFilters: Record<string, string> = {};
-    
-    if (filters.location) {
-      apiFilters.location = filters.location;
-    }
-    
-    if (filters.priceRange) {
-      const [minPrice, maxPrice] = filters.priceRange.split('-');
-      if (minPrice) apiFilters.minPrice = minPrice;
-      if (maxPrice) apiFilters.maxPrice = maxPrice;
-    }
-    
-    if (filters.bedrooms) {
-      apiFilters.minBedrooms = filters.bedrooms;
-    }
-    
-    if (filters.bathrooms) {
-      apiFilters.minBathrooms = filters.bathrooms;
-    }
-    
-    if (filters.squareFeet) {
-      apiFilters.minSquareFeet = filters.squareFeet;
-    }
-    
-    return apiFilters;
+  const handleOpenPropertyForm = () => {
+    setShowPropertyForm(true);
   };
   
-  // Fetch properties
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['/api/properties', filters, currentPage],
-    queryFn: async () => {
-      const response = await fetch(`/api/properties?${new URLSearchParams({
-        ...getApiFilters(),
-        page: currentPage.toString(),
-        limit: resultsPerPage.toString()
-      })}`);
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch properties');
-      }
-      
-      return response.json();
-    },
-  });
-  
-  useEffect(() => {
-    if (error) {
-      toast({
-        title: "Error fetching properties",
-        description: error instanceof Error ? error.message : "Unknown error occurred",
-        variant: "destructive",
-      });
-    }
-  }, [error, toast]);
-  
-  const properties = data?.properties || [];
-  const totalResults = data?.total || 0;
-  const totalPages = Math.ceil(totalResults / resultsPerPage);
-  
-  const handlePageChange = (page: number) => {
-    setCurrentPage(page);
-    window.scrollTo(0, 0);
-  };
-  
-  const handleFilterChange = (newFilters: typeof filters) => {
-    setFilters(newFilters);
-    setCurrentPage(1);
-  };
-  
-  const handleListProperty = () => {
-    toast({
-      title: "Feature coming soon",
-      description: "Property listing will be available in a future update"
-    });
+  const handleClosePropertyForm = () => {
+    setShowPropertyForm(false);
   };
   
   return (
-    <>
-      {/* Page header */}
-      <div className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8">
-          <div className="md:flex md:items-center md:justify-between">
-            <div className="flex-1 min-w-0">
-              <h2 className="text-2xl font-bold leading-7 text-neutral-900 sm:text-3xl sm:truncate">
-                Property Marketplace
-              </h2>
-            </div>
-            <div className="mt-4 flex md:mt-0 md:ml-4">
-              <Button onClick={handleListProperty} variant="secondary" className="bg-amber-500 hover:bg-amber-600 text-white">
-                <Plus className="h-4 w-4 mr-1" />
-                List Property
-              </Button>
+    <PropertyProvider>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="flex justify-between items-center mb-8">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Property Marketplace</h1>
+            <p className="mt-1 text-gray-600">Browse and list real estate properties</p>
+          </div>
+          
+          <button
+            onClick={handleOpenPropertyForm}
+            disabled={!isAuthenticated}
+            className={`
+              px-4 py-2 rounded-md flex items-center space-x-2
+              ${isAuthenticated
+                ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                : 'bg-gray-300 cursor-not-allowed text-gray-500'}
+            `}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clipRule="evenodd" />
+            </svg>
+            <span>List Property</span>
+          </button>
+        </div>
+        
+        {!isAuthenticated && (
+          <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <p className="text-sm text-yellow-700">
+                  Connect and authenticate your wallet to list properties.
+                </p>
+              </div>
             </div>
           </div>
-        </div>
-      </div>
-      
-      {/* Main content */}
-      <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        <FilterSection onFilter={handleFilterChange} />
-        
-        <PropertyGrid properties={properties} isLoading={isLoading} />
-        
-        {!isLoading && totalPages > 0 && (
-          <Pagination
-            currentPage={currentPage}
-            totalPages={totalPages}
-            onPageChange={handlePageChange}
-            totalResults={totalResults}
-            resultsPerPage={resultsPerPage}
-          />
         )}
+        
+        <PropertyGrid />
+        
+        <Modal isOpen={showPropertyForm} onClose={handleClosePropertyForm}>
+          <PropertyForm onClose={handleClosePropertyForm} />
+        </Modal>
       </div>
-    </>
+    </PropertyProvider>
   );
 }

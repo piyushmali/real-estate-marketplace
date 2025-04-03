@@ -1,40 +1,46 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { useToast } from "@/hooks/use-toast";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { formatWalletAddress } from "@/lib/utils";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ExternalLink } from "lucide-react";
 
+// Mock transaction data
+const mockTransactions = [
+  {
+    id: "tx1",
+    property_id: "PROP-12345",
+    seller_wallet: "HN7cABqLq46Es1jh92dQQisAq662SmxELLLsHHe4YWrH",
+    buyer_wallet: "2q7pyhPwAwZ3QMfZrnAbDhnh9mDUqycszcpf86VgQxhD",
+    price: 250000,
+    timestamp: new Date().getTime() - 24 * 60 * 60 * 1000,
+  },
+  {
+    id: "tx2",
+    property_id: "PROP-67890",
+    seller_wallet: "2q7pyhPwAwZ3QMfZrnAbDhnh9mDUqycszcpf86VgQxhD",
+    buyer_wallet: "3rULXe4mYVB6tkB5EZexNQEJv6DQtKjZqxEBqRt8h6cU",
+    price: 450000,
+    timestamp: new Date().getTime() - 7 * 24 * 60 * 60 * 1000,
+  },
+];
+
+// Helper function to format wallet addresses
+const formatWalletAddress = (address: string) => {
+  if (!address) return '';
+  return `${address.substring(0, 4)}...${address.substring(address.length - 4)}`;
+};
+
 export default function Transactions() {
-  const { toast } = useToast();
-  const [currentPage, setCurrentPage] = useState(1);
-  const resultsPerPage = 10;
+  const [isLoading, setIsLoading] = useState(true);
   
-  // Fetch transactions
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['/api/transactions', currentPage],
-    queryFn: async () => {
-      const response = await fetch(`/api/transactions?page=${currentPage}&limit=${resultsPerPage}`);
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch transactions');
-      }
-      
-      return response.json();
-    },
-  });
-  
-  if (error) {
-    toast({
-      title: "Error fetching transactions",
-      description: error instanceof Error ? error.message : "Unknown error occurred",
-      variant: "destructive",
-    });
-  }
-  
-  const transactions = data?.transactions || [];
+  // Simulate loading state
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsLoading(false);
+    }, 1000);
+    
+    return () => clearTimeout(timer);
+  }, []);
   
   return (
     <>
@@ -64,11 +70,6 @@ export default function Transactions() {
                   <div key={i} className="h-12 bg-neutral-100 rounded"></div>
                 ))}
               </div>
-            ) : transactions.length === 0 ? (
-              <div className="text-center py-8">
-                <h3 className="text-lg font-medium text-neutral-900">No transactions found</h3>
-                <p className="mt-2 text-sm text-neutral-600">There are no completed transactions yet</p>
-              </div>
             ) : (
               <div className="overflow-x-auto">
                 <Table>
@@ -83,13 +84,13 @@ export default function Transactions() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {transactions.map((tx) => {
+                    {mockTransactions.map((tx) => {
                       const txDate = new Date(tx.timestamp).toLocaleDateString();
                       
                       return (
                         <TableRow key={tx.id}>
                           <TableCell className="font-mono">
-                            {formatWalletAddress(tx.property_id, 6, 4)}
+                            {formatWalletAddress(tx.property_id)}
                           </TableCell>
                           <TableCell className="font-mono">
                             {formatWalletAddress(tx.seller_wallet)}
@@ -97,15 +98,15 @@ export default function Transactions() {
                           <TableCell className="font-mono">
                             {formatWalletAddress(tx.buyer_wallet)}
                           </TableCell>
-                          <TableCell className="font-mono">
-                            {(tx.price / 1000000000).toFixed(2)} SOL
+                          <TableCell>
+                            ${tx.price.toLocaleString()}
                           </TableCell>
                           <TableCell>{txDate}</TableCell>
                           <TableCell className="text-right">
                             <Button 
                               variant="ghost" 
                               size="sm"
-                              onClick={() => window.open(`https://explorer.solana.com/address/${tx.property_id}`, '_blank')}
+                              onClick={() => {}}
                             >
                               <ExternalLink className="h-4 w-4 mr-1" />
                               View

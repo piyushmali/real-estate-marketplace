@@ -8,11 +8,14 @@ import Marketplace from "./pages/Marketplace";
 import MyProperties from "./pages/MyProperties";
 import MyOffers from "./pages/MyOffers";
 import Transactions from "./pages/Transactions";
+import { WalletContextProvider } from "./context/WalletContext";
+import { PropertyProvider } from "./context/PropertyContext";
 
 function Router() {
   return (
     <Switch>
       <Route path="/" component={Marketplace} />
+      <Route path="/marketplace" component={Marketplace} />
       <Route path="/my-properties" component={MyProperties} />
       <Route path="/my-offers" component={MyOffers} />
       <Route path="/transactions" component={Transactions} />
@@ -24,10 +27,14 @@ function Router() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <Layout>
-        <Router />
-      </Layout>
-      <Toaster />
+      <WalletContextProvider>
+        <PropertyProvider>
+          <Layout>
+            <Router />
+          </Layout>
+          <Toaster />
+        </PropertyProvider>
+      </WalletContextProvider>
     </QueryClientProvider>
   );
 }
