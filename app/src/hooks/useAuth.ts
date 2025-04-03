@@ -34,6 +34,35 @@ export const useAuth = () => {
     }
   }, [token, connected, publicKey]);
 
+  // Check wallet connection and token validity
+  useEffect(() => {
+    const checkAuthentication = async () => {
+      // If wallet is connected but not authenticated
+      if (connected && publicKey) {
+        // Check if we have a valid token
+        if (!isAuthenticated) {
+          // Check if a token exists but wasn't validated yet
+          const existingToken = getToken();
+          if (existingToken) {
+            // Validate the token for this wallet
+            const payload = parseJwt(existingToken);
+            if (payload && payload.sub === publicKey && isValidToken()) {
+              // Token is valid for this wallet
+              setToken(existingToken);
+              setIsAuthenticated(true);
+              console.log("Found valid token, auto-authenticated");
+            } else {
+              // Token is invalid or for different wallet, clear it
+              clearToken();
+            }
+          }
+        }
+      }
+    };
+
+    checkAuthentication();
+  }, [connected, publicKey, isAuthenticated]);
+
   // Clear authentication if wallet disconnects
   useEffect(() => {
     if (!connected && token) {
@@ -50,6 +79,16 @@ export const useAuth = () => {
     if (!publicKey) {
       setError("Cannot authenticate without a wallet public key.");
       return;
+    }
+
+    // Check if we already have a valid token for this wallet
+    if (isAuthenticated && token) {
+      // Extract wallet address from token
+      const payload = parseJwt(token);
+      if (payload && payload.sub === publicKey) {
+        console.log("Already authenticated with this wallet");
+        return; // Already authenticated with this wallet
+      }
     }
 
     setLoading(true);
@@ -83,7 +122,7 @@ export const useAuth = () => {
     } finally {
       setLoading(false);
     }
-  }, [connected, publicKey]);
+  }, [connected, publicKey, isAuthenticated, token]);
 
   const logout = useCallback(() => {
     clearToken();

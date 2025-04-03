@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { WalletConnectButton } from "./WalletConnectButton";
+import { ConnectWalletButton } from "./ConnectWalletButton";
 import { Home, Plus, Bell, User, Menu } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";

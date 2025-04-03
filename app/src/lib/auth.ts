@@ -88,7 +88,7 @@ export const storeToken = (token: string) => {
       console.log("Stored token for wallet:", payload.sub);
     }
     
-    console.log("Token stored successfully");
+    console.log("Token stored successfully", token);
   } catch (error) {
     console.error("Error storing token:", error);
   }

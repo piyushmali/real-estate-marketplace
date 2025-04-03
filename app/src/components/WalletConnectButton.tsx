@@ -8,7 +8,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { LogOut, Copy, ExternalLink } from "lucide-react";
 
-export function WalletConnectButton() {
+// This component is now deprecated, use ConnectWalletButton instead
+export function LegacyWalletConnectButton() {
   const { wallet, connectWallet, disconnectWallet, signMessage } = useContext(WalletContext);
   const { toast } = useToast();
   const [isConnecting, setIsConnecting] = useState(false);
