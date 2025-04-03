@@ -1,135 +1,175 @@
-import { Link, Outlet, useLocation } from 'react-router-dom';
-import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
-import { Button } from '@/components/ui/button';
-import { useWallet } from '@/hooks/useWallet';
-import { useAuth } from '@/hooks/useAuth';
-import { useState } from 'react';
+import { Link, useLocation } from "wouter";
+import { WalletConnectButton } from "./WalletConnectButton";
+import { Home, Plus, Bell, User, Menu } from "lucide-react";
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { 
+  Sheet,
+  SheetContent,
+  SheetTrigger
+} from "@/components/ui/sheet";
 
-const Layout = () => {
-  const location = useLocation();
-  const { disconnect } = useWallet();
-  const { authenticate, logout, token } = useAuth();
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
+interface LayoutProps {
+  children: React.ReactNode;
+}
 
-  const navItems = [
-    { path: '/', label: 'Properties' },
-    { path: '/my-properties', label: 'My Properties' },
-    { path: '/my-offers', label: 'My Offers' },
-    { path: '/transactions', label: 'Transaction History' },
+export default function Layout({ children }: LayoutProps) {
+  const [location] = useLocation();
+  
+  const navLinks = [
+    { name: "Marketplace", path: "/", active: location === "/" },
+    { name: "My Properties", path: "/my-properties", active: location === "/my-properties" },
+    { name: "My Offers", path: "/my-offers", active: location === "/my-offers" },
+    { name: "Transactions", path: "/transactions", active: location === "/transactions" },
   ];
-
+  
   return (
-    <div className="min-h-screen bg-background">
-      <nav className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen flex flex-col">
+      {/* Navbar */}
+      <nav className="bg-white shadow-sm sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             <div className="flex items-center">
-              <Link to="/" className="text-xl font-bold text-foreground">
-                Real Estate NFT
-              </Link>
-              <div className="hidden md:flex ml-10 items-center space-x-6">
-                {navItems.map((item) => (
-                  <Link
-                    key={item.path}
-                    to={item.path}
-                    className={`text-sm font-medium transition-colors hover:text-foreground/80 ${location.pathname === item.path ? 'text-foreground border-b-2 border-foreground' : 'text-foreground/60'}`}
-                  >
-                    {item.label}
+              <div className="flex-shrink-0 flex items-center">
+                {/* Logo */}
+                <svg className="h-8 w-8 text-primary" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2L1 12h3v8h6v-6h4v6h6v-8h3L12 2z" />
+                </svg>
+                <span className="ml-2 text-xl font-semibold text-primary">SolEstate</span>
+              </div>
+              
+              {/* Desktop nav links */}
+              <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
+                {navLinks.map((link) => (
+                  <Link key={link.path} href={link.path}>
+                    <a className={`
+                      px-1 pt-1 inline-flex items-center text-sm font-medium border-b-2
+                      ${link.active 
+                        ? 'border-primary text-neutral-900' 
+                        : 'border-transparent text-neutral-500 hover:text-neutral-700 hover:border-neutral-300'}
+                    `}>
+                      {link.name}
+                    </a>
                   </Link>
                 ))}
               </div>
             </div>
+            
+            {/* Right side actions */}
             <div className="flex items-center space-x-4">
-              <div className="md:hidden">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setIsMenuOpen(!isMenuOpen)}
-                  className="relative text-base hover:bg-transparent focus:outline-none"
-                >
-                  <span className="sr-only">Open menu</span>
-                  <div className="w-5 h-5 flex flex-col justify-between">
-                    <span className={`block h-0.5 w-5 bg-current transform transition duration-300 ease-in-out ${isMenuOpen ? 'rotate-45 translate-y-2' : ''}`} />
-                    <span className={`block h-0.5 w-5 bg-current transition duration-300 ease-in-out ${isMenuOpen ? 'opacity-0' : ''}`} />
-                    <span className={`block h-0.5 w-5 bg-current transform transition duration-300 ease-in-out ${isMenuOpen ? '-rotate-45 -translate-y-2' : ''}`} />
+              <WalletConnectButton />
+              
+              {/* Mobile menu button */}
+              <Sheet>
+                <SheetTrigger asChild>
+                  <Button variant="ghost" size="icon" className="sm:hidden">
+                    <Menu className="h-5 w-5" />
+                    <span className="sr-only">Open main menu</span>
+                  </Button>
+                </SheetTrigger>
+                <SheetContent side="left" className="w-[240px] sm:w-[300px]">
+                  <div className="py-6 px-2">
+                    <div className="flex items-center mb-6">
+                      <svg className="h-8 w-8 text-primary" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 2L1 12h3v8h6v-6h4v6h6v-8h3L12 2z" />
+                      </svg>
+                      <span className="ml-2 text-xl font-semibold text-primary">SolEstate</span>
+                    </div>
+                    <div className="space-y-1">
+                      {navLinks.map((link) => (
+                        <Link key={link.path} href={link.path}>
+                          <a className={`
+                            block px-3 py-2 text-base font-medium rounded-md border-l-4
+                            ${link.active 
+                              ? 'bg-primary-50 border-primary text-primary-700' 
+                              : 'border-transparent text-neutral-500 hover:bg-neutral-50 hover:border-neutral-300 hover:text-neutral-700'}
+                          `}>
+                            {link.name}
+                          </a>
+                        </Link>
+                      ))}
+                    </div>
                   </div>
-                </Button>
-              </div>
-              <div className="hidden md:flex items-center space-x-4">
-                <WalletMultiButton className="!bg-primary hover:!bg-primary/90 !h-9 !px-4 !py-2" />
-                {token ? (
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      logout();
-                      disconnect();
-                    }}
-                    size="sm"
-                  >
-                    Sign Out
-                  </Button>
-                ) : (
-                  <Button
-                    variant="outline"
-                    onClick={authenticate}
-                    size="sm"
-                  >
-                    Authenticate
-                  </Button>
-                )}
-              </div>
-            </div>
-          </div>
-          {/* Mobile menu */}
-          <div className={`md:hidden ${isMenuOpen ? 'block' : 'hidden'}`}>
-            <div className="px-2 pt-2 pb-3 space-y-1">
-              {navItems.map((item) => (
-                <Link
-                  key={item.path}
-                  to={item.path}
-                  className={`block px-3 py-2 rounded-md text-base font-medium ${location.pathname === item.path ? 'bg-primary/10 text-foreground' : 'text-foreground/60 hover:bg-primary/5 hover:text-foreground/80'}`}
-                  onClick={() => setIsMenuOpen(false)}
-                >
-                  {item.label}
-                </Link>
-              ))}
-              <div className="pt-4 space-y-2">
-                <WalletMultiButton className="!bg-primary hover:!bg-primary/90 !h-9 !px-4 !py-2 w-full" />
-                {token ? (
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      logout();
-                      disconnect();
-                      setIsMenuOpen(false);
-                    }}
-                    className="w-full"
-                  >
-                    Sign Out
-                  </Button>
-                ) : (
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      authenticate();
-                      setIsMenuOpen(false);
-                    }}
-                    className="w-full"
-                  >
-                    Authenticate
-                  </Button>
-                )}
-              </div>
+                </SheetContent>
+              </Sheet>
             </div>
           </div>
         </div>
       </nav>
-
-      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        <Outlet />
+      
+      <main className="flex-1">
+        {children}
       </main>
+      
+      {/* Footer */}
+      <footer className="bg-white border-t border-neutral-200">
+        <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col md:flex-row justify-between">
+            <div className="mb-6 md:mb-0">
+              <div className="flex items-center">
+                <svg className="h-8 w-8 text-primary" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2L1 12h3v8h6v-6h4v6h6v-8h3L12 2z" />
+                </svg>
+                <span className="ml-2 text-xl font-semibold text-primary">SolEstate</span>
+              </div>
+              <p className="mt-2 text-sm text-neutral-500">Real estate marketplace powered by Solana blockchain</p>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-8 sm:grid-cols-3">
+              <div>
+                <h3 className="text-sm font-semibold text-neutral-700 tracking-wider uppercase">Marketplace</h3>
+                <ul className="mt-4 space-y-2">
+                  <li><Link href="/"><a className="text-sm text-neutral-500 hover:text-neutral-700">Browse Properties</a></Link></li>
+                  <li><a href="#" className="text-sm text-neutral-500 hover:text-neutral-700">List a Property</a></li>
+                  <li><Link href="/my-offers"><a className="text-sm text-neutral-500 hover:text-neutral-700">My Offers</a></Link></li>
+                </ul>
+              </div>
+              
+              <div>
+                <h3 className="text-sm font-semibold text-neutral-700 tracking-wider uppercase">Resources</h3>
+                <ul className="mt-4 space-y-2">
+                  <li><a href="#" className="text-sm text-neutral-500 hover:text-neutral-700">Documentation</a></li>
+                  <li><a href="https://docs.solana.com" target="_blank" rel="noopener noreferrer" className="text-sm text-neutral-500 hover:text-neutral-700">Solana Guides</a></li>
+                  <li><a href="#" className="text-sm text-neutral-500 hover:text-neutral-700">FAQs</a></li>
+                </ul>
+              </div>
+              
+              <div>
+                <h3 className="text-sm font-semibold text-neutral-700 tracking-wider uppercase">Legal</h3>
+                <ul className="mt-4 space-y-2">
+                  <li><a href="#" className="text-sm text-neutral-500 hover:text-neutral-700">Privacy Policy</a></li>
+                  <li><a href="#" className="text-sm text-neutral-500 hover:text-neutral-700">Terms of Service</a></li>
+                  <li><a href="#" className="text-sm text-neutral-500 hover:text-neutral-700">Contact Us</a></li>
+                </ul>
+              </div>
+            </div>
+          </div>
+          
+          <div className="mt-8 border-t border-neutral-200 pt-6 flex flex-col md:flex-row justify-between">
+            <p className="text-sm text-neutral-500">&copy; 2023 SolEstate. All rights reserved.</p>
+            <div className="mt-4 md:mt-0 flex space-x-6">
+              <a href="#" className="text-neutral-400 hover:text-neutral-500">
+                <span className="sr-only">Twitter</span>
+                <svg className="h-6 w-6" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M8.29 20.251c7.547 0 11.675-6.253 11.675-11.675 0-.178 0-.355-.012-.53A8.348 8.348 0 0022 5.92a8.19 8.19 0 01-2.357.646 4.118 4.118 0 001.804-2.27 8.224 8.224 0 01-2.605.996 4.107 4.107 0 00-6.993 3.743 11.65 11.65 0 01-8.457-4.287 4.106 4.106 0 001.27 5.477A4.072 4.072 0 012.8 9.713v.052a4.105 4.105 0 003.292 4.022 4.095 4.095 0 01-1.853.07 4.108 4.108 0 003.834 2.85A8.233 8.233 0 012 18.407a11.616 11.616 0 006.29 1.84" />
+                </svg>
+              </a>
+              <a href="#" className="text-neutral-400 hover:text-neutral-500">
+                <span className="sr-only">GitHub</span>
+                <svg className="h-6 w-6" fill="currentColor" viewBox="0 0 24 24">
+                  <path fillRule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clipRule="evenodd" />
+                </svg>
+              </a>
+              <a href="#" className="text-neutral-400 hover:text-neutral-500">
+                <span className="sr-only">Discord</span>
+                <svg className="h-6 w-6" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z" />
+                </svg>
+              </a>
+            </div>
+          </div>
+        </div>
+      </footer>
     </div>
   );
-};
-
-export default Layout;
+}

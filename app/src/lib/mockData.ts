@@ -14,6 +14,7 @@ export interface Property {
   created_at: number;
   updated_at: number;
   nft_mint: PublicKey;
+  nft_status: string;
 }
 
 export interface Offer {
@@ -57,6 +58,7 @@ export const mockProperties: Property[] = [
     created_at: Date.now() - 7 * 24 * 60 * 60 * 1000,
     updated_at: Date.now() - 7 * 24 * 60 * 60 * 1000,
     nft_mint: new PublicKey('44UDdtpnwkgeMRe7UNBKAqQXHtXQM4hsw8mzqGvQiPRz'),
+    nft_status: 'For Sale',
   },
   {
     property_id: 'PROP-2',
@@ -71,6 +73,7 @@ export const mockProperties: Property[] = [
     created_at: Date.now() - 14 * 24 * 60 * 60 * 1000,
     updated_at: Date.now() - 14 * 24 * 60 * 60 * 1000,
     nft_mint: new PublicKey('55YUBxTD4JbbrGfARCY9h5onvq3W4QWxCxDGPiSaVKgm'),
+    nft_status: 'New',
   },
   {
     property_id: 'PROP-3',
@@ -85,6 +88,7 @@ export const mockProperties: Property[] = [
     created_at: Date.now() - 21 * 24 * 60 * 60 * 1000,
     updated_at: Date.now() - 21 * 24 * 60 * 60 * 1000,
     nft_mint: new PublicKey('66nkB3MJPYFjzfDN4VnHgQdnRzwKkDUwTGhSKZxv6PUy'),
+    nft_status: 'Pending',
   },
 ];
 
