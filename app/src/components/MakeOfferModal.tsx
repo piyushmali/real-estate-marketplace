@@ -1,6 +1,6 @@
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Property } from "@shared/schema";
+import { Property } from "@/lib/mockData";
 import { useContext, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,6 +11,10 @@ import { WalletContext } from "@/context/WalletContext";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { queryClient } from "@/lib/queryClient";
+import { useWallet } from "@/hooks/useWallet";
+import { formatWalletAddress } from "@/lib/utils";
+import { useProperties } from "@/context/PropertyContext";
+import { PublicKey } from "@solana/web3.js";
 
 interface MakeOfferModalProps {
   property: Property;
@@ -21,19 +25,53 @@ interface MakeOfferModalProps {
 export function MakeOfferModal({ property, isOpen, onClose }: MakeOfferModalProps) {
   const { wallet } = useContext(WalletContext);
   const { toast } = useToast();
-  const [amount, setAmount] = useState("");
-  const [expiration, setExpiration] = useState("24");
+  const [offerAmount, setOfferAmount] = useState("");
+  const [expirationDays, setExpirationDays] = useState("7");
   const [note, setNote] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
   
-  const parsedAmount = parseFloat(amount) || 0;
-  const serviceFee = calculateServiceFee(parsedAmount);
-  const totalAmount = parsedAmount + serviceFee;
+  const { connected, publicKey } = useWallet();
+  const { makeOffer } = useProperties();
+  
+  const formatPrice = (price: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      maximumFractionDigits: 0,
+    }).format(price);
+  };
+  
+  const validateForm = () => {
+    const newErrors: Record<string, string> = {};
+    
+    if (!offerAmount) {
+      newErrors.offerAmount = "Offer amount is required";
+    } else {
+      const amount = Number(offerAmount);
+      if (isNaN(amount) || amount <= 0) {
+        newErrors.offerAmount = "Please enter a valid amount";
+      }
+    }
+    
+    if (!expirationDays) {
+      newErrors.expirationDays = "Expiration days are required";
+    } else {
+      const days = Number(expirationDays);
+      if (isNaN(days) || days < 1 || days > 30) {
+        newErrors.expirationDays = "Please enter a valid number of days (1-30)";
+      }
+    }
+    
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
   
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!wallet?.publicKey) {
+    if (!validateForm()) return;
+    if (!connected || !publicKey) {
       toast({
         title: "Wallet not connected",
         description: "Please connect your wallet to make an offer",
@@ -42,48 +80,42 @@ export function MakeOfferModal({ property, isOpen, onClose }: MakeOfferModalProp
       return;
     }
     
-    if (parsedAmount <= 0) {
-      toast({
-        title: "Invalid amount",
-        description: "Please enter a valid offer amount",
-        variant: "destructive",
-      });
-      return;
-    }
+    setIsSubmitting(true);
     
     try {
-      setIsSubmitting(true);
+      // In a real implementation, we would call the Solana program make_offer function here
+      // For now, we'll just use the context function
       
-      // Calculate expiration time
-      const expirationHours = parseInt(expiration);
-      const expirationDate = new Date();
-      expirationDate.setHours(expirationDate.getHours() + expirationHours);
+      const amount = Number(offerAmount);
+      const days = Number(expirationDays);
       
-      // Convert SOL to lamports (1 SOL = 10^9 lamports)
-      const amountInLamports = Math.floor(parsedAmount * 1000000000);
+      // Create a PublicKey from the string
+      const buyer = new PublicKey(publicKey);
       
-      await apiRequest("POST", "/api/offers", {
+      console.log("Making offer:", {
         property_id: property.property_id,
-        buyer_wallet: wallet.publicKey.toString(),
-        amount: amountInLamports,
-        expiration_time: expirationDate.toISOString(),
-        note: note,
+        amount,
+        expiration_days: days,
+        buyer: buyer.toString(),
       });
+      
+      // Simulate network delay
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Add the offer using the context function
+      makeOffer(property.property_id, buyer, amount, days);
       
       toast({
-        title: "Offer submitted",
-        description: "Your offer has been successfully submitted",
+        title: "Offer Submitted",
+        description: `Your offer of ${formatPrice(amount)} has been submitted successfully.`,
       });
-      
-      // Invalidate relevant queries
-      queryClient.invalidateQueries({ queryKey: ["/api/offers/buyer"] });
-      queryClient.invalidateQueries({ queryKey: [`/api/properties/${property.id}/offers`] });
       
       onClose();
     } catch (error) {
+      console.error("Error making offer:", error);
       toast({
-        title: "Error submitting offer",
-        description: error instanceof Error ? error.message : "An unknown error occurred",
+        title: "Error",
+        description: "Failed to submit your offer. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -93,54 +125,65 @@ export function MakeOfferModal({ property, isOpen, onClose }: MakeOfferModalProp
   
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle>Make an Offer</DialogTitle>
           <DialogDescription>
-            Submit your offer for {property.metadata_uri ? JSON.parse(atob(property.metadata_uri.split(',')[1])).title : "Property"} at {property.location}.
+            Submit your offer for {property.location}
           </DialogDescription>
         </DialogHeader>
         
-        <div className="bg-neutral-50 p-3 rounded-md mb-4">
-          <div className="flex items-center justify-between">
-            <span className="text-neutral-700">Listing Price:</span>
-            <span className="font-mono font-medium">{(property.price / 1000000000).toFixed(2)} SOL</span>
-          </div>
-        </div>
-        
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="offer-amount">Your Offer Amount (SOL)</Label>
-            <div className="relative">
-              <Input
-                id="offer-amount"
-                type="number"
-                placeholder="0.00"
-                step="0.01"
-                min="0.01"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                className="pr-12"
-              />
-              <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-                <span className="text-neutral-500 sm:text-sm">SOL</span>
-              </div>
+        <form onSubmit={handleSubmit} className="space-y-4 py-4">
+          <div className="grid gap-2">
+            <div className="flex justify-between items-center">
+              <span className="text-sm font-medium">Property:</span>
+              <span className="text-sm">{property.location}</span>
+            </div>
+            
+            <div className="flex justify-between items-center">
+              <span className="text-sm font-medium">Listed Price:</span>
+              <span className="text-sm font-semibold">{formatPrice(property.price)}</span>
+            </div>
+            
+            <div className="flex justify-between items-center">
+              <span className="text-sm font-medium">Owner:</span>
+              <span className="text-sm font-mono">{formatWalletAddress(property.owner.toString())}</span>
             </div>
           </div>
           
-          <div className="space-y-2">
-            <Label htmlFor="offer-expiration">Offer Expiration</Label>
-            <Select value={expiration} onValueChange={setExpiration}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select expiration time" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="24">24 hours</SelectItem>
-                <SelectItem value="48">48 hours</SelectItem>
-                <SelectItem value="72">3 days</SelectItem>
-                <SelectItem value="168">7 days</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="border-t my-4" />
+          
+          <div className="grid gap-2">
+            <Label htmlFor="offerAmount">Your Offer Amount (USD)</Label>
+            <Input
+              id="offerAmount"
+              type="number"
+              value={offerAmount}
+              onChange={(e) => setOfferAmount(e.target.value)}
+              placeholder="e.g., 250000"
+              className={errors.offerAmount ? "border-red-500" : ""}
+            />
+            {errors.offerAmount && (
+              <p className="text-red-500 text-xs mt-1">{errors.offerAmount}</p>
+            )}
+          </div>
+          
+          <div className="grid gap-2">
+            <Label htmlFor="expirationDays">Offer Expires In (Days)</Label>
+            <Input
+              id="expirationDays"
+              type="number"
+              value={expirationDays}
+              onChange={(e) => setExpirationDays(e.target.value)}
+              placeholder="e.g., 7"
+              min="1"
+              max="30"
+              className={errors.expirationDays ? "border-red-500" : ""}
+            />
+            {errors.expirationDays && (
+              <p className="text-red-500 text-xs mt-1">{errors.expirationDays}</p>
+            )}
+            <p className="text-xs text-gray-500">Your offer will expire after this many days if not accepted.</p>
           </div>
           
           <div className="space-y-2">
@@ -153,35 +196,14 @@ export function MakeOfferModal({ property, isOpen, onClose }: MakeOfferModalProp
             />
           </div>
           
-          <div className="bg-neutral-50 p-3 rounded-md">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-neutral-700">Service Fee (2.5%):</span>
-              <span className="font-mono">{serviceFee.toFixed(2)} SOL</span>
-            </div>
-            <div className="flex items-center justify-between font-medium mt-2">
-              <span className="text-neutral-700">Total:</span>
-              <span className="font-mono">{totalAmount.toFixed(2)} SOL</span>
-            </div>
-          </div>
-          
-          <div className="flex flex-col gap-3 pt-2">
-            <Button 
-              type="submit" 
-              className="w-full bg-amber-500 hover:bg-amber-600 text-white"
-              disabled={isSubmitting}
-            >
-              {isSubmitting ? "Submitting..." : "Submit Offer"}
-            </Button>
-            <Button 
-              type="button" 
-              variant="outline" 
-              className="w-full" 
-              onClick={onClose}
-              disabled={isSubmitting}
-            >
+          <DialogFooter className="mt-6">
+            <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>
-          </div>
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting ? "Submitting..." : "Submit Offer"}
+            </Button>
+          </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
