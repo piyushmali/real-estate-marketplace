@@ -6,16 +6,16 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
-real_estate_marketplace = "9KqRWCSKnNfFjfvZZsmDZfhkbzbpNVZ3kJENMk39U4fH"
+real_estate_marketplace = "BdSKkquiFKRqxbXYC3Jufz9K59xisZ33VNbyaigkStW6"
 
 [programs.localnet]
-real_estate_marketplace = "9KqRWCSKnNfFjfvZZsmDZfhkbzbpNVZ3kJENMk39U4fH"
+real_estate_marketplace = "BdSKkquiFKRqxbXYC3Jufz9K59xisZ33VNbyaigkStW6"
 
 [registry]
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "localnet"
+cluster = "devnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]

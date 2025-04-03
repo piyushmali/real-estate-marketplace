@@ -7,7 +7,7 @@ use anchor_spl::{
 };
 use std::mem::size_of;
 
-declare_id!("9KqRWCSKnNfFjfvZZsmDZfhkbzbpNVZ3kJENMk39U4fH");
+declare_id!("BdSKkquiFKRqxbXYC3Jufz9K59xisZ33VNbyaigkStW6");
 
 #[program]
 pub mod real_estate_marketplace {
@@ -345,7 +345,10 @@ pub struct ListProperty<'info> {
     #[account(
         init,
         payer = owner,
-        space = 8 + size_of::<Property>(),
+        space = 8 + size_of::<Property>() + 
+                32 + // property_id max length
+                100 + // metadata_uri max length
+                50, // location max length
         seeds = [b"property", marketplace.key().as_ref(), property_id.as_bytes()],
         bump
     )]
