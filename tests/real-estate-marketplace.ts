@@ -39,7 +39,7 @@ describe("Real Estate Marketplace", () => {
 
   before(async () => {
     // Ensure authority has enough SOL for all tests
-    await ensureMinimumBalance(authority.publicKey, 10 * LAMPORTS_PER_SOL); // 10 SOL for safety
+    await ensureMinimumBalance(authority.publicKey, 5 * LAMPORTS_PER_SOL); // 10 SOL for safety
 
     // Initialize marketplace PDA
     [marketplacePDA, marketplaceBump] = await PublicKey.findProgramAddress(

@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useWallet } from "@/hooks/useWallet";
 import { MakeOfferModal } from "./MakeOfferModal";
 import { UpdatePropertyModal } from "./UpdatePropertyModal";
+import { PropertyDetailModal } from "./PropertyDetailModal";
 import { Edit, ArrowRight } from "lucide-react";
 
 interface PropertyCardProps {
@@ -14,6 +15,7 @@ export function PropertyCard({ property }: PropertyCardProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [showMakeOfferModal, setShowMakeOfferModal] = useState(false);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
+  const [showDetailModal, setShowDetailModal] = useState(false);
   
   // Check if current user is the owner of this property
   const isOwner = connected && publicKey && property.owner.toString() === publicKey.toString();
@@ -31,6 +33,12 @@ export function PropertyCard({ property }: PropertyCardProps) {
     return `${address.substring(0, 4)}...${address.substring(address.length - 4)}`;
   };
 
+  // Handler for edit button from detail modal
+  const handleEditFromDetail = () => {
+    setShowDetailModal(false);
+    setShowUpdateModal(true);
+  };
+
   return (
     <>
       <div 
@@ -42,7 +50,8 @@ export function PropertyCard({ property }: PropertyCardProps) {
           <img 
             src={property.metadata_uri} 
             alt={`Property in ${property.location}`}
-            className="w-full h-48 object-cover"
+            className="w-full h-48 object-cover cursor-pointer"
+            onClick={() => setShowDetailModal(true)}
           />
           <div className="absolute top-2 right-2 bg-blue-600 text-white px-2 py-1 rounded-md text-xs uppercase font-semibold">
             {property.nft_status}
@@ -60,12 +69,12 @@ export function PropertyCard({ property }: PropertyCardProps) {
         </div>
         
         <div className="p-4">
-          <div className="flex justify-between items-start">
+          <div className="flex justify-between items-start cursor-pointer" onClick={() => setShowDetailModal(true)}>
             <h3 className="text-lg font-semibold truncate">{property.location}</h3>
             <span className="font-bold text-lg text-blue-700">{formattedPrice}</span>
           </div>
           
-          <div className="mt-2 flex items-center justify-between">
+          <div className="mt-2 flex items-center justify-between cursor-pointer" onClick={() => setShowDetailModal(true)}>
             <div className="flex items-center space-x-4">
               <div className="flex items-center">
                 <span className="text-gray-700 mr-1">{property.bedrooms}</span>
@@ -86,22 +95,21 @@ export function PropertyCard({ property }: PropertyCardProps) {
             Owner: {formatWalletAddress(property.owner.toString())}
           </div>
           
-          <div className="mt-4">
-            {isHovered && !isOwner && property.is_active ? (
-              // Show Make Offer button for non-owners on hover
+          <div className="mt-4 flex flex-col gap-2">
+            <button 
+              onClick={() => setShowDetailModal(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md w-full transition-colors flex items-center justify-center"
+            >
+              View Details
+              <ArrowRight size={16} className="ml-2" />
+            </button>
+            
+            {isHovered && !isOwner && property.is_active && (
               <button 
                 onClick={() => setShowMakeOfferModal(true)}
                 className="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-md w-full transition-colors flex items-center justify-center"
               >
                 Make Offer
-              </button>
-            ) : (
-              // Default button
-              <button 
-                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md w-full transition-colors flex items-center justify-center"
-              >
-                View Details
-                <ArrowRight size={16} className="ml-2" />
               </button>
             )}
           </div>
@@ -123,6 +131,21 @@ export function PropertyCard({ property }: PropertyCardProps) {
           property={property}
           isOpen={showUpdateModal}
           onClose={() => setShowUpdateModal(false)}
+        />
+      )}
+
+      {/* Property Detail Modal */}
+      {showDetailModal && (
+        <PropertyDetailModal
+          property={property}
+          isOpen={showDetailModal}
+          onClose={() => setShowDetailModal(false)}
+          onMakeOffer={() => {
+            setShowDetailModal(false);
+            setShowMakeOfferModal(true);
+          }}
+          isOwner={isOwner}
+          onEdit={handleEditFromDetail}
         />
       )}
     </>

@@ -6,7 +6,7 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
-real_estate_marketplace = "DDnkLJvWSt2FufL76mrE6jmXKNk8wiRnmrLGasCrNocn"
+real_estate_marketplace = "BdSKkquiFKRqxbXYC3Jufz9K59xisZ33VNbyaigkStW6"
 
 [programs.localnet]
 real_estate_marketplace = "DDnkLJvWSt2FufL76mrE6jmXKNk8wiRnmrLGasCrNocn"
@@ -15,9 +15,8 @@ real_estate_marketplace = "DDnkLJvWSt2FufL76mrE6jmXKNk8wiRnmrLGasCrNocn"
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "localnet"
+cluster = "Localnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
 test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"
-
