@@ -1,9 +1,9 @@
 // src/hooks/useWallet.ts
-import { useWallet } from "@solana/wallet-adapter-react";
+import { useWallet as useSolanaWallet } from "@solana/wallet-adapter-react";
 import { useEffect, useState } from "react";
 
-export const useWalletConnection = () => {
-  const { publicKey, connect, disconnect, connecting, connected: walletConnected } = useWallet();
+export const useWallet = () => {
+  const { publicKey, connect, disconnect, connecting, connected: walletConnected } = useSolanaWallet();
   const [connected, setConnected] = useState(walletConnected);
 
   useEffect(() => {

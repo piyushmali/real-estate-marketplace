@@ -1,20 +1,28 @@
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/button";
-import { Home, Bed, Bath, ArrowRight, MapPin } from "lucide-react";
+import { Home, Bed, Bath, ArrowRight, MapPin, Edit, DollarSign, CheckCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useWallet } from "@/hooks/useWallet";
+import { useState } from "react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
-interface Property {
-  property_id: string;
-  price: number;
-  metadata_uri: string;
-  location: string;
-  square_feet: number;
-  bedrooms: number;
-  bathrooms: number;
+import { Property, Offer } from "@/lib/mockData";
+
+interface PropertyCardProps {
+  property: Property;
+  onUpdateProperty?: (property: Property) => void;
+  onMakeOffer?: (property: Property) => void;
+  onExecuteSale?: (property: Property, offer: Offer) => void;
+  offers?: Offer[];
 }
 
-export const PropertyCard = ({ property }: { property: Property }) => {
+export const PropertyCard = ({ property, onUpdateProperty, onMakeOffer, onExecuteSale, offers = [] }: PropertyCardProps) => {
+  const { publicKey } = useWallet();
+  const [showActions, setShowActions] = useState(false);
+  
+  const isOwner = publicKey?.toBase58() === property.owner.toBase58();
+  const hasPendingOffers = offers.some(offer => offer.status === 'Pending');
   // Generate a random gradient for each property card
   const gradientColors = [
     "from-blue-500 to-purple-600",
@@ -27,7 +35,49 @@ export const PropertyCard = ({ property }: { property: Property }) => {
   const randomGradient = gradientColors[Math.floor(Math.random() * gradientColors.length)];
   
   return (
-    <Card className="w-[360px] h-[380px] flex flex-col overflow-hidden transition-all duration-300 hover:shadow-xl hover:scale-[1.02] rounded-xl border border-gray-200 m-4">
+    <Card 
+      className="w-[360px] h-[380px] flex flex-col overflow-hidden transition-all duration-300 hover:shadow-xl hover:scale-[1.02] rounded-xl border border-gray-200 m-4 relative"
+      onMouseEnter={() => setShowActions(true)}
+      onMouseLeave={() => setShowActions(false)}
+    >
+      {showActions && (
+        <div className="absolute right-2 top-2 z-10 flex flex-col gap-2">
+          {isOwner ? (
+            <>
+              <Button
+                size="sm"
+                variant="secondary"
+                className="flex items-center gap-1 bg-white/90"
+                onClick={() => onUpdateProperty?.(property)}
+              >
+                <Edit className="h-4 w-4" />
+                Update
+              </Button>
+              {hasPendingOffers && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="flex items-center gap-1 bg-white/90"
+                  onClick={() => onExecuteSale?.(property, offers[0])}
+                >
+                  <CheckCircle className="h-4 w-4" />
+                  Execute Sale
+                </Button>
+              )}
+            </>
+          ) : (
+            <Button
+              size="sm"
+              variant="secondary"
+              className="flex items-center gap-1 bg-white/90"
+              onClick={() => onMakeOffer?.(property)}
+            >
+              <DollarSign className="h-4 w-4" />
+              Make Offer
+            </Button>
+          )}
+        </div>
+      )}
       <div className="relative w-full h-40 overflow-hidden">
         <div className={cn("absolute inset-0 bg-gradient-to-r", randomGradient, "opacity-40")}></div>
         <img

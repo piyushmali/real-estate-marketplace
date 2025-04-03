@@ -1,10 +1,10 @@
 // src/hooks/useAuth.ts
 import { useState, useCallback } from "react";
 import { signWithPhantom, authenticateWithBackend, storeToken, getToken, clearToken } from "@/lib/auth";
-import { useWalletConnection } from "@/hooks/useWallet";
+import { useWallet } from "@/hooks/useWallet";
 
 export const useAuth = () => {
-  const { connected } = useWalletConnection();
+  const { connected } = useWallet();
   const [token, setToken] = useState<string | null>(getToken());
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
