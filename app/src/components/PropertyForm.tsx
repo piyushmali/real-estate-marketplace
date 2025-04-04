@@ -4,10 +4,10 @@ import { PublicKey, Connection, SystemProgram, SYSVAR_RENT_PUBKEY, Keypair, LAMP
 import { useProperties } from "@/context/PropertyContext";
 import { useAnchorWallet } from "@solana/wallet-adapter-react";
 import { Program, BN, AnchorProvider, Idl } from "@coral-xyz/anchor";
-import { TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID, getAssociatedTokenAddress } from "@solana/spl-token";
+import { TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID, getAssociatedTokenAddress, createInitializeMintInstruction, createAssociatedTokenAccountInstruction, createMintToInstruction } from "@solana/spl-token";
 import axios from "axios";
 import idlJsonRaw from "@/idl/real_estate_marketplace.json";
-import { toast } from "@/components/ui/use-toast";
+import { useToast } from "@/components/ui/use-toast";
 
 // API URL with fallback
 const API_URL = import.meta.env.VITE_BACKEND_URL || "http://127.0.0.1:8080";
@@ -139,6 +139,7 @@ export function PropertyForm({ onClose }: PropertyFormProps) {
   const { connected, publicKey } = useWallet();
   const anchorWallet = useAnchorWallet();
   const { addProperty } = useProperties();
+  const { toast } = useToast();
   const [formData, setFormData] = useState({
     property_id: `Property${Math.floor(Math.random() * 10000)}`,
     location: "",
@@ -357,12 +358,16 @@ export function PropertyForm({ onClose }: PropertyFormProps) {
       
       // Special case: property_nft_mint needs to be a signer regardless of IDL definition
       // This is because we're creating a new mint and it needs to sign the transaction
+      // The error 0x66 (InvalidNFTMint) occurs when this account isn't properly set up
       const isPropertyNftMint = name === 'property_nft_mint' || accountDef.name === 'property_nft_mint';
+      
+      // For property_nft_mint, we need to ensure it's both a signer and writable
+      // regardless of what the IDL says
       
       return {
         pubkey,
         isSigner: isPropertyNftMint || accountDef.signer === true,
-        isWritable: accountDef.writable === true
+        isWritable: isPropertyNftMint || accountDef.writable === true
       };
     });
     
@@ -416,6 +421,10 @@ export function PropertyForm({ onClose }: PropertyFormProps) {
         publicKey: propertyNftMint.publicKey.toString(),
         secretKey: propertyNftMint.secretKey.length
       });
+      
+      // Note: The NFT mint is created by the program itself
+      // We don't need to initialize it separately, but we need to ensure
+      // it's properly passed as a signer to the transaction
       
       console.log("Finding marketplace PDA");
       
@@ -518,6 +527,8 @@ export function PropertyForm({ onClose }: PropertyFormProps) {
             marketplace: marketplacePDA,
             property: propertyPDA,
             owner: new PublicKey(publicKey.toString()),
+            // Ensure property_nft_mint is correctly passed
+            // The error 0x66 (InvalidNFTMint) indicates an issue with this account
             property_nft_mint: propertyNftMint.publicKey,
             owner_nft_account: ownerNftAccount,
             systemProgram: SystemProgram.programId,
@@ -532,13 +543,69 @@ export function PropertyForm({ onClose }: PropertyFormProps) {
         // Create a transaction manually
         console.log("Creating transaction manually");
         tx = new Transaction();
+        
+        // Add mint initialization instruction
+        // This is needed to properly initialize the NFT mint account
+        // Error 0x66 (InvalidNFTMint) occurs when the mint isn't properly initialized
+        console.log("Adding mint initialization instruction");
+        const mintRentExempt = await program.provider.connection.getMinimumBalanceForRentExemption(82);
+        
+        // Create mint account instruction
+        const createMintAccountIx = SystemProgram.createAccount({
+          fromPubkey: new PublicKey(publicKey.toString()),
+          newAccountPubkey: propertyNftMint.publicKey,
+          space: 82,
+          lamports: mintRentExempt,
+          programId: TOKEN_PROGRAM_ID
+        });
+        
+        // Initialize mint instruction - using the imported functions
+        const initMintIx = createInitializeMintInstruction(
+          propertyNftMint.publicKey,
+          0, // 0 decimals for NFT
+          new PublicKey(publicKey.toString()),
+          new PublicKey(publicKey.toString()) // Set freeze authority to owner as well
+        );
+        
+        // Create associated token account for owner
+        const createATAIx = createAssociatedTokenAccountInstruction(
+          new PublicKey(publicKey.toString()),
+          ownerNftAccount,
+          new PublicKey(publicKey.toString()),
+          propertyNftMint.publicKey
+        );
+        
+        // Mint one token to the owner - this is important to do BEFORE the list_property instruction
+        // The program expects the NFT to be already minted when list_property is called
+        const mintToIx = createMintToInstruction(
+          propertyNftMint.publicKey,
+          ownerNftAccount,
+          new PublicKey(publicKey.toString()),
+          1, // Mint exactly 1 token for NFT
+          []
+        );
+        
+        console.log("Created all token initialization instructions");
+        
+        // Add all instructions to transaction in the correct order
+        // The order is important - we need to fully initialize the NFT mint and mint a token
+        // before calling list_property
+        tx.add(createMintAccountIx);
+        tx.add(initMintIx);
+        tx.add(createATAIx);
+        tx.add(mintToIx);
+        
+        // Add the list_property instruction last, after the NFT is fully initialized
         tx.add(ixData);
+        
+        console.log("Added all instructions to transaction");
         
         // Set recent blockhash
         tx.recentBlockhash = blockhash;
         tx.feePayer = new PublicKey(publicKey.toString());
         
-        // Add propertyNftMint as a signer by signing the transaction with it
+        // Make sure the propertyNftMint is included as a signer
+        // This is critical for the NFT mint initialization to work properly
         tx.partialSign(propertyNftMint);
         
         console.log("Transaction created and signed with propertyNftMint");
@@ -548,6 +615,11 @@ export function PropertyForm({ onClose }: PropertyFormProps) {
         console.log("Transaction signers:", tx.signatures.map(s => s.publicKey.toString()));
         console.log("Property NFT mint pubkey:", propertyNftMint.publicKey.toString());
         console.log("Is property_nft_mint in signers:", tx.signatures.some(s => s.publicKey.equals(propertyNftMint.publicKey)));
+        
+        // Verify that the property_nft_mint is included in the transaction signers
+        if (!tx.signatures.some(s => s.publicKey.equals(propertyNftMint.publicKey))) {
+          throw new Error("Property NFT mint is not included as a signer in the transaction");
+        }
         
         // Sign with wallet
         console.log("Signing transaction with wallet");
@@ -567,14 +639,13 @@ export function PropertyForm({ onClose }: PropertyFormProps) {
         
         // Send to backend
         console.log("Sending transaction to backend");
-        // Include the property_nft_mint secret key in the request
-        // This allows the backend to properly sign the transaction with the mint keypair
+        // The backend expects only serialized_transaction and metadata
+        // The property_nft_mint keypair has already signed the transaction
         const response = await axios.post(
           `${API_URL}/api/transactions/submit`,
           {
             serialized_transaction: serializedTransaction,
-            metadata: JSON.stringify(propertyMetadata),
-            property_nft_mint_secret: Array.from(propertyNftMint.secretKey)
+            metadata: JSON.stringify(propertyMetadata)
           },
           {
             headers: {
@@ -614,8 +685,26 @@ export function PropertyForm({ onClose }: PropertyFormProps) {
           stack: err.stack,
           name: err.name
         });
-        setErrors({ general: `Failed to add property: ${err.message || "Unknown error"}` });
+        
+        // Extract more detailed error message if available from axios response
+        let errorMessage = err.message || "Unknown error";
+        if (err.response) {
+          console.error("Server response:", err.response.data);
+          errorMessage = err.response.data || errorMessage;
+          // If the error message is an object, try to extract a readable message
+          if (typeof errorMessage === 'object') {
+            errorMessage = JSON.stringify(errorMessage);
+          }
+        }
+        
+        setErrors({ general: `Failed to add property: ${errorMessage}` });
         setIsSubmitting(false);
+        
+        toast({
+          variant: "destructive",
+          title: "Transaction Failed",
+          description: `Could not list property: ${errorMessage}`,
+        });
       }
     } catch (error) {
       console.error("Error adding property:", error);
