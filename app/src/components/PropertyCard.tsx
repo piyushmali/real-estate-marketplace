@@ -1,153 +1,128 @@
-import { Property } from "@/lib/mockData";
-import { useState } from "react";
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/button";
+import { Home, Bed, Bath, ArrowRight, MapPin, Edit, DollarSign, CheckCircle } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { useWallet } from "@/hooks/useWallet";
-import { MakeOfferModal } from "./MakeOfferModal";
-import { UpdatePropertyModal } from "./UpdatePropertyModal";
-import { PropertyDetailModal } from "./PropertyDetailModal";
-import { Edit, ArrowRight } from "lucide-react";
+import { useState } from "react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+
+import { Property, Offer } from "@/lib/mockData";
 
 interface PropertyCardProps {
   property: Property;
+  onUpdateProperty?: (property: Property) => void;
+  onMakeOffer?: (property: Property) => void;
+  onExecuteSale?: (property: Property, offer: Offer) => void;
+  offers?: Offer[];
 }
 
-export function PropertyCard({ property }: PropertyCardProps) {
-  const { connected, publicKey } = useWallet();
-  const [isHovered, setIsHovered] = useState(false);
-  const [showMakeOfferModal, setShowMakeOfferModal] = useState(false);
-  const [showUpdateModal, setShowUpdateModal] = useState(false);
-  const [showDetailModal, setShowDetailModal] = useState(false);
+export const PropertyCard = ({ property, onUpdateProperty, onMakeOffer, onExecuteSale, offers = [] }: PropertyCardProps) => {
+  const { publicKey } = useWallet();
+  const [showActions, setShowActions] = useState(false);
   
-  // Check if current user is the owner of this property
-  const isOwner = connected && publicKey && property.owner.toString() === publicKey.toString();
-
-  // Format price with commas
-  const formattedPrice = new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    maximumFractionDigits: 0,
-  }).format(property.price);
-
-  // Format wallet address
-  const formatWalletAddress = (address: string) => {
-    if (!address) return '';
-    return `${address.substring(0, 4)}...${address.substring(address.length - 4)}`;
-  };
-
-  // Handler for edit button from detail modal
-  const handleEditFromDetail = () => {
-    setShowDetailModal(false);
-    setShowUpdateModal(true);
-  };
-
-  return (
-    <>
-      <div 
-        className="bg-white rounded-lg shadow-md overflow-hidden transition-transform duration-200 hover:-translate-y-1 hover:shadow-lg"
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
-      >
-        <div className="relative">
-          <img 
-            src={property.metadata_uri} 
-            alt={`Property in ${property.location}`}
-            className="w-full h-48 object-cover cursor-pointer"
-            onClick={() => setShowDetailModal(true)}
-          />
-          <div className="absolute top-2 right-2 bg-blue-600 text-white px-2 py-1 rounded-md text-xs uppercase font-semibold">
-            {property.nft_status}
-          </div>
-          
-          {/* Update button for property owner */}
-          {isOwner && isHovered && (
-            <button 
-              onClick={() => setShowUpdateModal(true)}
-              className="absolute top-2 left-2 bg-white text-blue-600 hover:text-blue-800 p-2 rounded-full shadow-md transition-all duration-200 ease-in-out"
+  const isOwner = publicKey?.toBase58() === property.owner.toBase58();
+  const hasPendingOffers = offers.some(offer => offer.status === 'Pending');
+  // Generate a random gradient for each property card
+  const gradientColors = [
+    "from-blue-500 to-purple-600",
+    "from-emerald-500 to-teal-600",
+    "from-pink-500 to-rose-600",
+    "from-amber-500 to-orange-600",
+    "from-indigo-500 to-violet-600"
+  ];
+  
+  const randomGradient = gradientColors[Math.floor(Math.random() * gradientColors.length)];
+  
+  return (    <Card 
+      className="w-[360px] h-[380px] flex flex-col overflow-hidden transition-all duration-300 hover:shadow-xl hover:scale-[1.02] rounded-xl border border-gray-200 m-4 relative"
+      onMouseEnter={() => setShowActions(true)}
+      onMouseLeave={() => setShowActions(false)}
+    >
+      {showActions && (
+        <div className="absolute right-2 top-2 z-10 flex flex-col gap-2">
+          {isOwner ? (
+            <>
+              <Button
+                size="sm"
+                variant="secondary"
+                className="flex items-center gap-1 bg-white/90"
+                onClick={() => onUpdateProperty?.(property)}
+              >
+                <Edit className="h-4 w-4" />
+                Update
+              </Button>
+              {hasPendingOffers && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="flex items-center gap-1 bg-white/90"
+                  onClick={() => onExecuteSale?.(property, offers[0])}
+                >
+                  <CheckCircle className="h-4 w-4" />
+                  Execute Sale
+                </Button>
+              )}
+            </>
+          ) : (
+            <Button
+              size="sm"
+              variant="secondary"
+              className="flex items-center gap-1 bg-white/90"
+              onClick={() => onMakeOffer?.(property)}
             >
-              <Edit size={16} />
-            </button>
+              <DollarSign className="h-4 w-4" />
+              Make Offer
+            </Button>
           )}
         </div>
-        
-        <div className="p-4">
-          <div className="flex justify-between items-start cursor-pointer" onClick={() => setShowDetailModal(true)}>
-            <h3 className="text-lg font-semibold truncate">{property.location}</h3>
-            <span className="font-bold text-lg text-blue-700">{formattedPrice}</span>
+      )}
+      <div className="relative w-full h-40 overflow-hidden">
+        <div className={cn("absolute inset-0 bg-gradient-to-r", randomGradient, "opacity-40")}></div>
+        <img
+          src={property.metadata_uri}
+          alt={`Property in ${property.location}`}
+          className="w-full h-full object-cover"
+          onError={(e) => {
+            e.currentTarget.src = "/api/placeholder/400/200";
+          }}
+        />
+        <Badge className="absolute top-3 right-3 bg-white/90 text-black font-bold text-sm px-3 py-1 rounded-full shadow-md">
+          ${property.price.toLocaleString()}
+        </Badge>
+      </div>
+      
+      <CardHeader className="py-3 px-4">
+        <div className="flex items-center gap-1 mb-1">
+          <MapPin className="size-4 text-rose-500" />
+          <CardTitle className="text-base font-bold line-clamp-1">{property.location}</CardTitle>
+        </div>
+      </CardHeader>
+      
+      <CardContent className="py-0 px-4 flex-grow">
+        <div className="grid grid-cols-3 gap-3 text-sm mt-2">
+          <div className="flex flex-col items-center p-2 bg-gray-50 rounded-lg">
+            <Home className="size-5 text-blue-600 mb-1" />
+            <span className="font-medium">{property.square_feet.toLocaleString()} ft²</span>
           </div>
-          
-          <div className="mt-2 flex items-center justify-between cursor-pointer" onClick={() => setShowDetailModal(true)}>
-            <div className="flex items-center space-x-4">
-              <div className="flex items-center">
-                <span className="text-gray-700 mr-1">{property.bedrooms}</span>
-                <span className="text-gray-500 text-sm">bed</span>
-              </div>
-              <div className="flex items-center">
-                <span className="text-gray-700 mr-1">{property.bathrooms}</span>
-                <span className="text-gray-500 text-sm">bath</span>
-              </div>
-              <div className="flex items-center">
-                <span className="text-gray-700 mr-1">{property.square_feet}</span>
-                <span className="text-gray-500 text-sm">sqft</span>
-              </div>
-            </div>
+          <div className="flex flex-col items-center p-2 bg-gray-50 rounded-lg">
+            <Bed className="size-5 text-indigo-600 mb-1" />
+            <span className="font-medium">{property.bedrooms} Beds</span>
           </div>
-          
-          <div className="mt-1 text-xs text-gray-500">
-            Owner: {formatWalletAddress(property.owner.toString())}
-          </div>
-          
-          <div className="mt-4 flex flex-col gap-2">
-            <button 
-              onClick={() => setShowDetailModal(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md w-full transition-colors flex items-center justify-center"
-            >
-              View Details
-              <ArrowRight size={16} className="ml-2" />
-            </button>
-            
-            {isHovered && !isOwner && property.is_active && (
-              <button 
-                onClick={() => setShowMakeOfferModal(true)}
-                className="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-md w-full transition-colors flex items-center justify-center"
-              >
-                Make Offer
-              </button>
-            )}
+          <div className="flex flex-col items-center p-2 bg-gray-50 rounded-lg">
+            <Bath className="size-5 text-teal-600 mb-1" />
+            <span className="font-medium">{property.bathrooms} Baths</span>
           </div>
         </div>
-      </div>
-
-      {/* Make Offer Modal */}
-      {showMakeOfferModal && (
-        <MakeOfferModal 
-          property={property}
-          isOpen={showMakeOfferModal}
-          onClose={() => setShowMakeOfferModal(false)}
-        />
-      )}
-
-      {/* Update Property Modal */}
-      {showUpdateModal && (
-        <UpdatePropertyModal 
-          property={property}
-          isOpen={showUpdateModal}
-          onClose={() => setShowUpdateModal(false)}
-        />
-      )}
-
-      {/* Property Detail Modal */}
-      {showDetailModal && (
-        <PropertyDetailModal
-          property={property}
-          isOpen={showDetailModal}
-          onClose={() => setShowDetailModal(false)}
-          onMakeOffer={() => {
-            setShowDetailModal(false);
-            setShowMakeOfferModal(true);
-          }}
-          isOwner={isOwner}
-          onEdit={handleEditFromDetail}
-        />
-      )}
-    </>
+        <p className="text-xs text-gray-500 mt-3 font-mono">ID: {property.property_id}</p>
+      </CardContent>
+      
+      <CardFooter className="pt-3 pb-4 px-4 border-t mt-auto">
+        <Button className="ml-auto flex items-center gap-2 bg-black text-white hover:bg-gray-800 rounded-full px-4 py-2 text-sm font-medium transition-all duration-200 shadow-sm hover:shadow-md">
+          View Details
+          <ArrowRight className="size-4" />
+        </Button>
+      </CardFooter>
+    </Card>
   );
-}
+};

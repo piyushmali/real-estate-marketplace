@@ -1,0 +1,1042 @@
+{
+  "address": "BdSKkquiFKRqxbXYC3Jufz9K59xisZ33VNbyaigkStW6",
+  "metadata": {
+    "name": "real_estate_marketplace",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Created with Anchor"
+  },
+  "instructions": [
+    {
+      "name": "execute_sale",
+      "discriminator": [
+        37,
+        74,
+        217,
+        157,
+        79,
+        49,
+        35,
+        6
+      ],
+      "accounts": [
+        {
+          "name": "marketplace",
+          "writable": true
+        },
+        {
+          "name": "property",
+          "writable": true
+        },
+        {
+          "name": "offer",
+          "writable": true
+        },
+        {
+          "name": "transaction_history",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  114,
+                  97,
+                  110,
+                  115,
+                  97,
+                  99,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "property"
+              },
+              {
+                "kind": "account",
+                "path": "property.transaction_count.checked_add(1).ok_or(ErrorCode ::\nArithmeticOverflow) ? ",
+                "account": "Property"
+              }
+            ]
+          }
+        },
+        {
+          "name": "buyer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "seller",
+          "signer": true
+        },
+        {
+          "name": "buyer_token_account",
+          "writable": true
+        },
+        {
+          "name": "seller_token_account",
+          "writable": true
+        },
+        {
+          "name": "marketplace_fee_account",
+          "writable": true
+        },
+        {
+          "name": "seller_nft_account",
+          "writable": true
+        },
+        {
+          "name": "buyer_nft_account",
+          "writable": true
+        },
+        {
+          "name": "property_nft_mint"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "initialize_marketplace",
+      "discriminator": [
+        47,
+        81,
+        64,
+        0,
+        96,
+        56,
+        105,
+        7
+      ],
+      "accounts": [
+        {
+          "name": "marketplace",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  114,
+                  107,
+                  101,
+                  116,
+                  112,
+                  108,
+                  97,
+                  99,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "marketplace_fee",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "list_property",
+      "discriminator": [
+        254,
+        101,
+        42,
+        174,
+        220,
+        160,
+        42,
+        82
+      ],
+      "accounts": [
+        {
+          "name": "marketplace",
+          "writable": true
+        },
+        {
+          "name": "property",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  112,
+                  101,
+                  114,
+                  116,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "marketplace"
+              },
+              {
+                "kind": "arg",
+                "path": "property_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "property_nft_mint",
+          "writable": true
+        },
+        {
+          "name": "owner_nft_account",
+          "writable": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "property_id",
+          "type": "string"
+        },
+        {
+          "name": "price",
+          "type": "u64"
+        },
+        {
+          "name": "metadata_uri",
+          "type": "string"
+        },
+        {
+          "name": "location",
+          "type": "string"
+        },
+        {
+          "name": "square_feet",
+          "type": "u64"
+        },
+        {
+          "name": "bedrooms",
+          "type": "u8"
+        },
+        {
+          "name": "bathrooms",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "make_offer",
+      "discriminator": [
+        214,
+        98,
+        97,
+        35,
+        59,
+        12,
+        44,
+        178
+      ],
+      "accounts": [
+        {
+          "name": "property"
+        },
+        {
+          "name": "offer",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  111,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "property"
+              },
+              {
+                "kind": "account",
+                "path": "buyer"
+              }
+            ]
+          }
+        },
+        {
+          "name": "buyer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "offer_amount",
+          "type": "u64"
+        },
+        {
+          "name": "expiration_time",
+          "type": "i64"
+        }
+      ]
+    },
+    {
+      "name": "respond_to_offer",
+      "discriminator": [
+        143,
+        248,
+        12,
+        134,
+        212,
+        199,
+        41,
+        123
+      ],
+      "accounts": [
+        {
+          "name": "property",
+          "writable": true
+        },
+        {
+          "name": "offer",
+          "writable": true
+        },
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "accept",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "name": "update_property",
+      "discriminator": [
+        232,
+        71,
+        59,
+        188,
+        98,
+        74,
+        94,
+        54
+      ],
+      "accounts": [
+        {
+          "name": "property",
+          "writable": true
+        },
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "owner_nft_account",
+          "writable": true
+        },
+        {
+          "name": "property_nft_mint"
+        }
+      ],
+      "args": [
+        {
+          "name": "price",
+          "type": {
+            "option": "u64"
+          }
+        },
+        {
+          "name": "metadata_uri",
+          "type": {
+            "option": "string"
+          }
+        },
+        {
+          "name": "is_active",
+          "type": {
+            "option": "bool"
+          }
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Marketplace",
+      "discriminator": [
+        70,
+        222,
+        41,
+        62,
+        78,
+        3,
+        32,
+        174
+      ]
+    },
+    {
+      "name": "Offer",
+      "discriminator": [
+        215,
+        88,
+        60,
+        71,
+        170,
+        162,
+        73,
+        229
+      ]
+    },
+    {
+      "name": "Property",
+      "discriminator": [
+        195,
+        247,
+        69,
+        181,
+        195,
+        47,
+        152,
+        19
+      ]
+    },
+    {
+      "name": "TransactionHistory",
+      "discriminator": [
+        134,
+        21,
+        169,
+        239,
+        149,
+        30,
+        110,
+        78
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "OfferAccepted",
+      "discriminator": [
+        81,
+        238,
+        238,
+        115,
+        140,
+        18,
+        8,
+        20
+      ]
+    },
+    {
+      "name": "OfferCreated",
+      "discriminator": [
+        31,
+        236,
+        215,
+        144,
+        75,
+        45,
+        157,
+        87
+      ]
+    },
+    {
+      "name": "OfferRejected",
+      "discriminator": [
+        139,
+        155,
+        150,
+        208,
+        102,
+        127,
+        20,
+        202
+      ]
+    },
+    {
+      "name": "PropertyListed",
+      "discriminator": [
+        33,
+        100,
+        200,
+        151,
+        150,
+        150,
+        33,
+        145
+      ]
+    },
+    {
+      "name": "PropertySold",
+      "discriminator": [
+        82,
+        93,
+        18,
+        245,
+        120,
+        218,
+        161,
+        190
+      ]
+    },
+    {
+      "name": "PropertyUpdated",
+      "discriminator": [
+        107,
+        88,
+        70,
+        90,
+        174,
+        85,
+        32,
+        96
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "PropertyIdTooLong",
+      "msg": "Property ID too long"
+    },
+    {
+      "code": 6001,
+      "name": "MetadataUriTooLong",
+      "msg": "Metadata URI too long"
+    },
+    {
+      "code": 6002,
+      "name": "LocationTooLong",
+      "msg": "Location too long"
+    },
+    {
+      "code": 6003,
+      "name": "InvalidPrice",
+      "msg": "Invalid price"
+    },
+    {
+      "code": 6004,
+      "name": "InvalidOfferAmount",
+      "msg": "Invalid offer amount"
+    },
+    {
+      "code": 6005,
+      "name": "InvalidExpirationTime",
+      "msg": "Invalid expiration time"
+    },
+    {
+      "code": 6006,
+      "name": "NotPropertyOwner",
+      "msg": "Not property owner"
+    },
+    {
+      "code": 6007,
+      "name": "PropertyNotActive",
+      "msg": "Property not active"
+    },
+    {
+      "code": 6008,
+      "name": "CannotOfferOwnProperty",
+      "msg": "Cannot offer on own property"
+    },
+    {
+      "code": 6009,
+      "name": "OfferNotPending",
+      "msg": "Offer not pending"
+    },
+    {
+      "code": 6010,
+      "name": "OfferExpired",
+      "msg": "Offer expired"
+    },
+    {
+      "code": 6011,
+      "name": "OfferNotAccepted",
+      "msg": "Offer not accepted"
+    },
+    {
+      "code": 6012,
+      "name": "OfferPropertyMismatch",
+      "msg": "Offer property mismatch"
+    },
+    {
+      "code": 6013,
+      "name": "NotOfferBuyer",
+      "msg": "Not offer buyer"
+    },
+    {
+      "code": 6014,
+      "name": "InvalidTokenAccount",
+      "msg": "Invalid token account"
+    },
+    {
+      "code": 6015,
+      "name": "InvalidMarketplaceFeeAccount",
+      "msg": "Invalid marketplace fee account"
+    },
+    {
+      "code": 6016,
+      "name": "ArithmeticOverflow",
+      "msg": "Arithmetic overflow"
+    },
+    {
+      "code": 6017,
+      "name": "InvalidFeePercentage",
+      "msg": "Invalid fee percentage"
+    },
+    {
+      "code": 6018,
+      "name": "NotNFTOwner",
+      "msg": "Not NFT owner"
+    },
+    {
+      "code": 6019,
+      "name": "InvalidNFTMint",
+      "msg": "Invalid NFT mint"
+    }
+  ],
+  "types": [
+    {
+      "name": "Marketplace",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "properties_count",
+            "type": "u64"
+          },
+          {
+            "name": "fee_percentage",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Offer",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "buyer",
+            "type": "pubkey"
+          },
+          {
+            "name": "property",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "status",
+            "type": {
+              "defined": {
+                "name": "OfferStatus"
+              }
+            }
+          },
+          {
+            "name": "created_at",
+            "type": "i64"
+          },
+          {
+            "name": "updated_at",
+            "type": "i64"
+          },
+          {
+            "name": "expiration_time",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "OfferAccepted",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "offer",
+            "type": "pubkey"
+          },
+          {
+            "name": "property",
+            "type": "pubkey"
+          },
+          {
+            "name": "buyer",
+            "type": "pubkey"
+          },
+          {
+            "name": "seller",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "OfferCreated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "offer",
+            "type": "pubkey"
+          },
+          {
+            "name": "property",
+            "type": "pubkey"
+          },
+          {
+            "name": "buyer",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "OfferRejected",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "offer",
+            "type": "pubkey"
+          },
+          {
+            "name": "property",
+            "type": "pubkey"
+          },
+          {
+            "name": "buyer",
+            "type": "pubkey"
+          },
+          {
+            "name": "seller",
+            "type": "pubkey"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "OfferStatus",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Pending"
+          },
+          {
+            "name": "Accepted"
+          },
+          {
+            "name": "Rejected"
+          },
+          {
+            "name": "Completed"
+          },
+          {
+            "name": "Expired"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Property",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "marketplace",
+            "type": "pubkey"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "property_id",
+            "type": "string"
+          },
+          {
+            "name": "price",
+            "type": "u64"
+          },
+          {
+            "name": "metadata_uri",
+            "type": "string"
+          },
+          {
+            "name": "location",
+            "type": "string"
+          },
+          {
+            "name": "square_feet",
+            "type": "u64"
+          },
+          {
+            "name": "bedrooms",
+            "type": "u8"
+          },
+          {
+            "name": "bathrooms",
+            "type": "u8"
+          },
+          {
+            "name": "is_active",
+            "type": "bool"
+          },
+          {
+            "name": "created_at",
+            "type": "i64"
+          },
+          {
+            "name": "updated_at",
+            "type": "i64"
+          },
+          {
+            "name": "transaction_count",
+            "type": "u64"
+          },
+          {
+            "name": "nft_mint",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PropertyListed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "property",
+            "type": "pubkey"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "property_id",
+            "type": "string"
+          },
+          {
+            "name": "price",
+            "type": "u64"
+          },
+          {
+            "name": "nft_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PropertySold",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "property",
+            "type": "pubkey"
+          },
+          {
+            "name": "transaction_history",
+            "type": "pubkey"
+          },
+          {
+            "name": "previous_owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "new_owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "price",
+            "type": "u64"
+          },
+          {
+            "name": "nft_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PropertyUpdated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "property",
+            "type": "pubkey"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "price",
+            "type": "u64"
+          },
+          {
+            "name": "is_active",
+            "type": "bool"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "TransactionHistory",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "property",
+            "type": "pubkey"
+          },
+          {
+            "name": "seller",
+            "type": "pubkey"
+          },
+          {
+            "name": "buyer",
+            "type": "pubkey"
+          },
+          {
+            "name": "price",
+            "type": "u64"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          },
+          {
+            "name": "transaction_index",
+            "type": "u64"
+          }
+        ]
+      }
+    }
+  ]
+}

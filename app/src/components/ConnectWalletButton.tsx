@@ -8,10 +8,10 @@ import {
   DropdownMenuTrigger 
 } from "@/components/ui/dropdown-menu";
 import { Copy, ExternalLink, LogOut } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
+import { useToast } from "@/components/ui/use-toast";
 
 export function ConnectWalletButton() {
-  const { connected, connect, disconnect, publicKey } = useWallet();
+  const { connected, connectWallet, disconnectWallet, publicKey } = useWallet();
   const { authenticate, token, logout, loading, error, isAuthenticated } = useAuth();
   const { toast } = useToast();
   const [isConnecting, setIsConnecting] = useState(false);
@@ -34,7 +34,7 @@ export function ConnectWalletButton() {
     try {
       setIsConnecting(true);
       setErrorMessage(null);
-      await connect();
+      await connectWallet();
       // Authentication will happen automatically in useAuth hook if needed
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to connect wallet";
@@ -49,7 +49,7 @@ export function ConnectWalletButton() {
   const handleDisconnect = async () => {
     try {
       setErrorMessage(null);
-      await disconnect();
+      await disconnectWallet();
       if (token) {
         logout();
       }
