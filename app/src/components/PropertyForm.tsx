@@ -322,17 +322,46 @@ export function PropertyForm({ onClose }: PropertyFormProps) {
     
     const data = Buffer.from(dataArray);
     
+    // Helper function to convert camelCase to snake_case
+    const camelToSnake = (str: string) => {
+      return str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+    };
+    
+    // Define common mappings
+    const camelToSnakeMap: Record<string, string> = {
+      systemProgram: "system_program",
+      tokenProgram: "token_program",
+      associatedTokenProgram: "associated_token_program"
+    };
+    
     // Create account metas
     const keys = Object.entries(accounts).map(([name, pubkey]) => {
-      const accountDef = instructionDef.accounts.find(acc => acc.name === name);
+      // Try to find account definition using original name
+      let accountDef = instructionDef.accounts.find(acc => acc.name === name);
+      
+      // If not found, try with predefined mapping
+      if (!accountDef && camelToSnakeMap[name]) {
+        accountDef = instructionDef.accounts.find(acc => acc.name === camelToSnakeMap[name]);
+      }
+      
+      // If still not found, try with automatic camelCase to snake_case conversion
+      if (!accountDef) {
+        const snakeName = camelToSnake(name);
+        accountDef = instructionDef.accounts.find(acc => acc.name === snakeName);
+      }
       
       if (!accountDef) {
-        throw new Error(`Account '${name}' not found in instruction '${instructionName}'`);
+        console.error(`Available accounts in instruction:`, instructionDef.accounts.map(a => a.name));
+        throw new Error(`Account '${name}' not found in instruction '${instructionName}'. Try using snake_case naming (e.g., system_program instead of systemProgram).`);
       }
+      
+      // Special case: property_nft_mint needs to be a signer regardless of IDL definition
+      // This is because we're creating a new mint and it needs to sign the transaction
+      const isPropertyNftMint = name === 'property_nft_mint' || accountDef.name === 'property_nft_mint';
       
       return {
         pubkey,
-        isSigner: accountDef.signer === true,
+        isSigner: isPropertyNftMint || accountDef.signer === true,
         isWritable: accountDef.writable === true
       };
     });
@@ -371,7 +400,7 @@ export function PropertyForm({ onClose }: PropertyFormProps) {
         bedrooms: Number(formData.bedrooms),
         bathrooms: Number(formData.bathrooms),
         metadata_uri: formData.metadata_uri,
-        owner: publicKey.toString(),
+        owner: new PublicKey(publicKey.toString()),
       };
       
       console.log("Creating Anchor program connection");
@@ -412,7 +441,7 @@ export function PropertyForm({ onClose }: PropertyFormProps) {
       // Find owner's NFT account (ATA)
       const ownerNftAccount = await getAssociatedTokenAddress(
         propertyNftMint.publicKey,
-        publicKey
+        new PublicKey(publicKey.toString())
       );
       
       console.log("Owner NFT Account:", ownerNftAccount.toString());
@@ -488,7 +517,7 @@ export function PropertyForm({ onClose }: PropertyFormProps) {
           {
             marketplace: marketplacePDA,
             property: propertyPDA,
-            owner: publicKey,
+            owner: new PublicKey(publicKey.toString()),
             property_nft_mint: propertyNftMint.publicKey,
             owner_nft_account: ownerNftAccount,
             systemProgram: SystemProgram.programId,
@@ -507,13 +536,18 @@ export function PropertyForm({ onClose }: PropertyFormProps) {
         
         // Set recent blockhash
         tx.recentBlockhash = blockhash;
-        tx.feePayer = publicKey;
+        tx.feePayer = new PublicKey(publicKey.toString());
         
         // Add propertyNftMint as a signer by signing the transaction with it
         tx.partialSign(propertyNftMint);
         
         console.log("Transaction created and signed with propertyNftMint");
         console.log("Transaction details:", debugTransaction(tx));
+        
+        // Log the signers for debugging
+        console.log("Transaction signers:", tx.signatures.map(s => s.publicKey.toString()));
+        console.log("Property NFT mint pubkey:", propertyNftMint.publicKey.toString());
+        console.log("Is property_nft_mint in signers:", tx.signatures.some(s => s.publicKey.equals(propertyNftMint.publicKey)));
         
         // Sign with wallet
         console.log("Signing transaction with wallet");
@@ -524,17 +558,23 @@ export function PropertyForm({ onClose }: PropertyFormProps) {
         
         // Serialize the transaction
         console.log("Serializing transaction");
-        const serializedTransaction = signedTx.serialize({requireAllSignatures: false}).toString('base64');
+        // Make sure we're not requiring all signatures when serializing
+        // This is important because the backend will verify and process the transaction
+        // We need to include the propertyNftMint signature in the serialized transaction
+        const serializedTransaction = signedTx.serialize({verifySignatures: false, requireAllSignatures: false}).toString('base64');
         
         console.log("Transaction serialized, length:", serializedTransaction.length);
         
         // Send to backend
         console.log("Sending transaction to backend");
+        // Include the property_nft_mint secret key in the request
+        // This allows the backend to properly sign the transaction with the mint keypair
         const response = await axios.post(
           `${API_URL}/api/transactions/submit`,
           {
             serialized_transaction: serializedTransaction,
-            metadata: JSON.stringify(propertyMetadata)
+            metadata: JSON.stringify(propertyMetadata),
+            property_nft_mint_secret: Array.from(propertyNftMint.secretKey)
           },
           {
             headers: {
