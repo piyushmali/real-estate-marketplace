@@ -138,7 +138,7 @@ const useDirectInstructions = async (
 export function PropertyForm({ onClose }: PropertyFormProps) {
   const { connected, publicKey } = useWallet();
   const anchorWallet = useAnchorWallet();
-  const { addProperty } = useProperties();
+  const { addProperty, getProperties } = useProperties();
   const { toast } = useToast();
   const [formData, setFormData] = useState({
     property_id: `Property${Math.floor(Math.random() * 10000)}`,
@@ -694,6 +694,9 @@ export function PropertyForm({ onClose }: PropertyFormProps) {
         // Add property to local state
         addProperty(newProperty);
         
+        // No need to refresh properties immediately - avoid rate limits
+        // The useEffect in PropertyGrid will handle refresh on next render
+        
         toast({
           title: "Property Listed!",
           description: `Your property has been successfully listed. Transaction: ${signature}`,
@@ -726,6 +729,9 @@ export function PropertyForm({ onClose }: PropertyFormProps) {
             
             // Add property to local state
             addProperty(newProperty);
+            
+            // No need to refresh properties immediately - avoid rate limits
+            // The useEffect in PropertyGrid will handle refresh on next render
             
             toast({
               title: "Property Listed!",
@@ -763,11 +769,25 @@ export function PropertyForm({ onClose }: PropertyFormProps) {
       setErrors({ general: `Failed to add property: ${errorMessage}` });
       setIsSubmitting(false);
       
-      toast({
-        variant: "destructive",
-        title: "Transaction Failed",
-        description: `Could not list property: ${errorMessage}`,
-      });
+      // Check if error is related to rate limiting
+      if (err.message && err.message.includes("429") || 
+          (err.response && err.response.status === 429)) {
+        setErrors({ 
+          general: "Rate limit exceeded. The Solana RPC is busy, please wait a moment and try again." 
+        });
+        
+        toast({
+          variant: "destructive",
+          title: "Rate Limit Exceeded",
+          description: "Too many requests to the Solana network. Please wait a moment and try again.",
+        });
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Transaction Failed",
+          description: `Could not list property: ${errorMessage}`,
+        });
+      }
     } finally {
       setIsSubmitting(false);
     }

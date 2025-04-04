@@ -7,7 +7,8 @@ import { useWallet } from "@/hooks/useWallet";
 import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
-import { Property, Offer } from "@/lib/mockData";
+import { Property } from "@/context/PropertyContext";
+import { Offer } from "@/lib/mockData";
 
 interface PropertyCardProps {
   property: Property;
