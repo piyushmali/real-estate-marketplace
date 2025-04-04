@@ -645,12 +645,24 @@ export function PropertyForm({ onClose }: PropertyFormProps) {
         console.log("Transaction confirmed, notifying backend");
         
         try {
-          // Send to backend - use the correct API endpoint
+          // The backend expects a ListPropertyRequest in the metadata field
+          const propertyMetadataJson = JSON.stringify({
+            property_id: formData.property_id,
+            price: Number(formData.price) * LAMPORTS_PER_SOL,
+            metadata_uri: formData.metadata_uri,
+            location: formData.location,
+            square_feet: Number(formData.square_feet),
+            bedrooms: Number(formData.bedrooms),
+            bathrooms: Number(formData.bathrooms)
+          });
+          
+          // Send to backend - use the correct API endpoint with the expected field names
           const response = await axios.post(
             `${API_URL}/api/transactions/submit`,
             {
-              signature: signature,
-              metadata: JSON.stringify(propertyMetadata)
+              // Backend expects serialized_transaction, not signature
+              serialized_transaction: signedTx.serialize().toString('base64'),
+              metadata: propertyMetadataJson
             },
             {
               headers: {
