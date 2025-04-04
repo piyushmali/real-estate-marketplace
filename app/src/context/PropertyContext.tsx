@@ -5,6 +5,9 @@ import { Program } from '@coral-xyz/anchor';
 // RPC URL with fallback
 const RPC_URL = import.meta.env.VITE_SOLANA_RPC_URL || "https://api.devnet.solana.com";
 
+// API URL with fallback
+const API_URL = import.meta.env.VITE_BACKEND_URL || "http://127.0.0.1:8080";
+
 // Program ID from your IDL
 const PROGRAM_ID = "HGKnNU4vUKBMbhBbZQ9beqUGHYNzKtv9vTGKvqfna3cZ";
 
@@ -17,6 +20,22 @@ export interface Property {
   bathrooms: number;
   metadata_uri: string;
   owner: PublicKey | string;
+}
+
+// Response from backend API
+interface PropertyResponse {
+  id: string;
+  property_id: string;
+  owner_wallet: string;
+  price: number;
+  metadata_uri: string;
+  location: string;
+  square_feet: number;
+  bedrooms: number;
+  bathrooms: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 // Mock properties for local testing
@@ -79,33 +98,37 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
     setLastFetchTime(Date.now());
 
     try {
-      // In a real implementation, you would fetch properties from the blockchain here
-      // For now, we'll use mock data since on-chain implementation would require specific PDAs and account fetching
-      console.log('Using mock properties for local testing (would fetch from blockchain in production)');
+      // Fetch properties from the backend API
+      console.log('Fetching properties from backend API');
+      const response = await fetch(`${API_URL}/api/properties`);
       
-      // Format mock properties with PublicKey objects for the owner field
-      const formattedMockProperties = mockProperties.map(property => ({
-        ...property,
-        owner: typeof property.owner === 'string' 
-          ? new PublicKey(property.owner) 
-          : property.owner
+      if (!response.ok) {
+        throw new Error(`API responded with status: ${response.status}`);
+      }
+      
+      const data: PropertyResponse[] = await response.json();
+      
+      // Convert database properties to our Property format
+      const formattedProperties = data.map(item => ({
+        property_id: item.property_id,
+        location: item.location,
+        // Convert lamports to SOL (1 SOL = 1,000,000,000 lamports)
+        price: Number(item.price) / 1_000_000_000, 
+        square_feet: Number(item.square_feet),
+        bedrooms: Number(item.bedrooms),
+        bathrooms: Number(item.bathrooms),
+        metadata_uri: item.metadata_uri || "https://images.unsplash.com/photo-1582407947304-fd86f028f716?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=800&q=80",
+        owner: new PublicKey(item.owner_wallet)
       }));
       
-      // Set the properties state
-      setProperties(formattedMockProperties);
+      console.log(`Fetched ${formattedProperties.length} properties from backend:`, formattedProperties);
+      setProperties(formattedProperties);
       
-      // Future implementation would fetch from blockchain:
-      // const connection = new Connection(RPC_URL, "confirmed");
-      // const provider = new Provider(connection, wallet, { commitment: "confirmed" });
-      // const program = new Program(idl, PROGRAM_ID, provider);
-      // const accounts = await program.account.property.all();
-      // ... then process and format the accounts into properties
     } catch (error) {
       console.error('Failed to fetch properties:', error);
-      setError('Failed to fetch properties. Please try again later.');
+      setError('Failed to fetch properties. Falling back to mock data.');
       
-      // Even if there's an error, we'll still show mock properties
-      // so the app remains functional for demo purposes
+      // Fall back to mock data if the API request fails
       const formattedMockProperties = mockProperties.map(property => ({
         ...property,
         owner: typeof property.owner === 'string' 

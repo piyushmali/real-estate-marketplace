@@ -7,6 +7,7 @@ use solana_sdk::signature::Signature;
 use std::env;
 use std::str::FromStr;
 use uuid::Uuid;
+use tracing::error;
 
 use crate::db;
 use crate::models::User;
@@ -60,7 +61,14 @@ pub fn verify_wallet_signature(wallet_address: &str, signature: &str, message: &
 }
 
 pub fn store_user_jwt(wallet_address: &str, jwt: &str) -> Result<(), diesel::result::Error> {
-    let conn = &mut db::establish_connection();
+    let mut conn = match db::establish_connection() {
+        Ok(conn) => conn,
+        Err(e) => {
+            error!("Failed to connect to database: {}", e);
+            return Err(diesel::result::Error::RollbackTransaction);
+        }
+    };
+    
     let new_user = User {
         id: Uuid::new_v4(),
         wallet_address: wallet_address.to_string(),
@@ -73,6 +81,6 @@ pub fn store_user_jwt(wallet_address: &str, jwt: &str) -> Result<(), diesel::res
         .on_conflict(users::wallet_address)
         .do_update()
         .set(users::jwt_token.eq(jwt))
-        .execute(conn)?;
+        .execute(&mut conn)?;
     Ok(())
 }

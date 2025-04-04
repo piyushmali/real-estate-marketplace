@@ -1,14 +1,21 @@
 import { PropertyCard } from "./PropertyCard";
 import { useProperties } from "@/context/PropertyContext";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { Property } from "@/context/PropertyContext";
 
 export function PropertyGrid() {
-  const { properties, getProperties, isLoading, error } = useProperties();
+  const { properties, getProperties, isLoading, error, addProperty } = useProperties();
   
   // Fetch properties when component mounts
   useEffect(() => {
     getProperties();
   }, [getProperties]);
+  
+  // Handle property update
+  const handleUpdateProperty = (updatedProperty: Property) => {
+    // Update the property in the local state by replacing the old one
+    addProperty(updatedProperty);
+  };
   
   // Loading state
   if (isLoading && properties.length === 0) {
@@ -45,9 +52,13 @@ export function PropertyGrid() {
   }
   
   return (
-    <div className="grid gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+    <div className="grid gap-8 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 mx-auto max-w-7xl px-4 py-6">
       {properties.map((property) => (
-        <PropertyCard key={property.property_id} property={property} />
+        <PropertyCard 
+          key={property.property_id} 
+          property={property} 
+          onUpdateProperty={handleUpdateProperty}
+        />
       ))}
     </div>
   );

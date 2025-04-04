@@ -3,7 +3,7 @@ use actix_cors::Cors;
 use dotenv::dotenv;
 use serde::Deserialize;
 use std::env;
-use tracing::info;
+use tracing::{info, error};
 use tracing_subscriber;
 
 mod auth;
@@ -11,6 +11,7 @@ mod db;
 mod models;
 mod schema;
 mod transaction;
+mod property;
 
 #[derive(Deserialize)]
 struct AuthRequest {
@@ -48,7 +49,14 @@ async fn main() -> std::io::Result<()> {
         .with_max_level(tracing::Level::INFO)
         .init();
 
-    let _conn = db::establish_connection();
+    // Test database connection on startup
+    match db::establish_connection() {
+        Ok(_) => info!("Database connection successful"),
+        Err(e) => {
+            error!("Database connection failed: {}", e);
+            // Continue running the server even if the DB connection fails initially
+        }
+    }
 
     let port = env::var("PORT")
         .unwrap_or_else(|_| "8080".to_string())
@@ -76,6 +84,8 @@ async fn main() -> std::io::Result<()> {
             .route("/api/transactions/submit", web::post().to(transaction::submit_transaction))
             .route("/api/blockhash", web::get().to(transaction::get_recent_blockhash))
             .route("/api/instructions/submit", web::post().to(transaction::submit_instructions))
+            .route("/api/properties", web::get().to(property::get_properties))
+            .route("/api/properties/{property_id}", web::get().to(property::get_property))
     })
     .bind(("127.0.0.1", port))?
     .run()

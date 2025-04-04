@@ -17,6 +17,7 @@ use solana_sdk::{
 use std::str::FromStr;
 use uuid::Uuid;
 use anyhow::Result;
+use tracing::{info, error};
 
 use crate::auth;
 use crate::db;
@@ -194,11 +195,18 @@ pub async fn submit_transaction(
     };
 
     // Store property in database
-    let conn = &mut db::establish_connection();
+    let mut conn = match db::establish_connection() {
+        Ok(conn) => conn,
+        Err(e) => {
+            error!("Failed to connect to database: {}", e);
+            return HttpResponse::InternalServerError().body("Database connection failed");
+        }
+    };
+    
     let now = Utc::now().naive_utc();
     let new_property = Property {
         id: Uuid::new_v4(),
-        property_id: metadata.property_id,
+        property_id: metadata.property_id.clone(),
         owner_wallet: wallet_address,
         price: metadata.price as i64,
         metadata_uri: metadata.metadata_uri,
@@ -211,16 +219,21 @@ pub async fn submit_transaction(
         updated_at: now,
     };
 
-    if let Err(e) = diesel::insert_into(properties::table)
+    match diesel::insert_into(properties::table)
         .values(&new_property)
-        .execute(conn)
+        .execute(&mut conn)
     {
-        return HttpResponse::InternalServerError().body(format!("Failed to store property: {}", e));
+        Ok(_) => {
+            info!("Property {} successfully added to database", metadata.property_id);
+            HttpResponse::Ok().json(TransactionResponse {
+                signature: tx_signature.to_string(),
+            })
+        }
+        Err(e) => {
+            error!("Failed to insert property into database: {}", e);
+            HttpResponse::InternalServerError().body(format!("Database error: {}", e))
+        }
     }
-
-    HttpResponse::Ok().json(TransactionResponse {
-        signature: tx_signature.to_string()
-    })
 }
 
 // New endpoint to submit transaction instructions
@@ -312,11 +325,18 @@ pub async fn submit_instructions(
     };
 
     // Store property in database
-    let conn = &mut db::establish_connection();
+    let mut conn = match db::establish_connection() {
+        Ok(conn) => conn,
+        Err(e) => {
+            error!("Failed to connect to database: {}", e);
+            return HttpResponse::InternalServerError().body("Database connection failed");
+        }
+    };
+    
     let now = Utc::now().naive_utc();
     let new_property = Property {
         id: Uuid::new_v4(),
-        property_id: metadata.property_id,
+        property_id: metadata.property_id.clone(),
         owner_wallet: wallet_address,
         price: metadata.price as i64,
         metadata_uri: metadata.metadata_uri,
@@ -329,14 +349,19 @@ pub async fn submit_instructions(
         updated_at: now,
     };
 
-    if let Err(e) = diesel::insert_into(properties::table)
+    match diesel::insert_into(properties::table)
         .values(&new_property)
-        .execute(conn)
+        .execute(&mut conn)
     {
-        return HttpResponse::InternalServerError().body(format!("Failed to store property: {}", e));
+        Ok(_) => {
+            info!("Property {} successfully added to database", metadata.property_id);
+            HttpResponse::Ok().json(TransactionResponse {
+                signature: tx_signature.to_string(),
+            })
+        }
+        Err(e) => {
+            error!("Failed to insert property into database: {}", e);
+            HttpResponse::InternalServerError().body(format!("Database error: {}", e))
+        }
     }
-
-    HttpResponse::Ok().json(TransactionResponse {
-        signature: tx_signature.to_string()
-    })
 } 
