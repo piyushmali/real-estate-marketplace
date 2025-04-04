@@ -311,17 +311,18 @@ export function PropertyForm({ onClose }: PropertyFormProps) {
     }
     
     // Use the discriminator from the IDL
-    const discriminator = instructionDef.discriminator;
+    const discriminator = Buffer.from(instructionDef.discriminator);
     console.log(`Using discriminator:`, discriminator);
     
-    // Create a proper data buffer with discriminator
-    const dataArray = [...discriminator]; // Start with the 8-byte discriminator
+    // We need to properly serialize our args according to Anchor's format
+    // For list_property, we have string, u64, string, string, u64, u8, u8
     
-    // In a real implementation, you would serialize the args here
-    // For now, we're just doing a minimal implementation
-    console.log("Instruction data includes discriminator, actual args will be serialized by backend");
+    // Serialize the arguments according to their types
+    const serializedArgs = serializeAnchorArgs(args, instructionDef.args);
     
-    const data = Buffer.from(dataArray);
+    // Combine discriminator and serialized arguments
+    const data = Buffer.concat([discriminator, serializedArgs]);
+    console.log("Data buffer created with length:", data.length);
     
     // Helper function to convert camelCase to snake_case
     const camelToSnake = (str: string) => {
@@ -357,12 +358,7 @@ export function PropertyForm({ onClose }: PropertyFormProps) {
       }
       
       // Special case: property_nft_mint needs to be a signer regardless of IDL definition
-      // This is because we're creating a new mint and it needs to sign the transaction
-      // The error 0x66 (InvalidNFTMint) occurs when this account isn't properly set up
       const isPropertyNftMint = name === 'property_nft_mint' || accountDef.name === 'property_nft_mint';
-      
-      // For property_nft_mint, we need to ensure it's both a signer and writable
-      // regardless of what the IDL says
       
       return {
         pubkey,
@@ -383,6 +379,64 @@ export function PropertyForm({ onClose }: PropertyFormProps) {
       programId,
       data
     });
+  };
+
+  // Helper function to serialize Anchor arguments
+  const serializeAnchorArgs = (args: any[], argDefs: any[]): Buffer => {
+    // Let's serialize the arguments properly based on their types
+    const buffers: Buffer[] = [];
+    
+    args.forEach((arg, i) => {
+      const argDef = argDefs[i];
+      const type = argDef.type;
+      
+      console.log(`Serializing arg ${i}: ${argDef.name} (${type}) = ${arg}`);
+      
+      switch (type) {
+        case 'string': {
+          // Anchor format: 4-byte length prefix + UTF-8 bytes
+          const strBytes = Buffer.from(arg);
+          const lenBuf = Buffer.alloc(4);
+          lenBuf.writeUInt32LE(strBytes.length, 0);
+          buffers.push(lenBuf);
+          buffers.push(strBytes);
+          break;
+        }
+        case 'u64': {
+          // Anchor format: 8-byte little-endian
+          const numBuf = Buffer.alloc(8);
+          if (arg instanceof BN) {
+            const bn = arg as BN;
+            const arr = bn.toArray('le', 8);
+            numBuf.set(arr);
+          } else {
+            let bn = new BN(arg);
+            const arr = bn.toArray('le', 8);
+            numBuf.set(arr);
+          }
+          buffers.push(numBuf);
+          break;
+        }
+        case 'u8': {
+          // Anchor format: 1-byte
+          const numBuf = Buffer.alloc(1);
+          numBuf.writeUInt8(Number(arg), 0);
+          buffers.push(numBuf);
+          break;
+        }
+        case 'bool': {
+          // Anchor format: 1-byte (0 or 1)
+          const boolBuf = Buffer.alloc(1);
+          boolBuf.writeUInt8(arg ? 1 : 0, 0);
+          buffers.push(boolBuf);
+          break;
+        }
+        default:
+          throw new Error(`Unsupported argument type: ${type}`);
+      }
+    });
+    
+    return Buffer.concat(buffers);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -422,10 +476,10 @@ export function PropertyForm({ onClose }: PropertyFormProps) {
         secretKey: propertyNftMint.secretKey.length
       });
       
-      // Note: The NFT mint is created by the program itself
-      // We don't need to initialize it separately, but we need to ensure
-      // it's properly passed as a signer to the transaction
+      // Get the connection from the program provider
+      const connection = new Connection(RPC_URL, "confirmed");
       
+      // Following the test file approach more closely
       console.log("Finding marketplace PDA");
       
       // Find marketplace PDA - hardcoded authority for simplicity
@@ -445,17 +499,50 @@ export function PropertyForm({ onClose }: PropertyFormProps) {
       
       console.log("Property PDA:", propertyPDA.toString());
       
-      console.log("Getting associated token address");
+      // Calculate rent-exempt minimum balance for mint account
+      const mintRentExempt = await connection.getMinimumBalanceForRentExemption(82);
       
-      // Find owner's NFT account (ATA)
+      // First prepare all the instructions needed
+      console.log("Preparing all instructions for combined transaction");
+      
+      // 1. Create mint account instruction
+      const createMintAccountIx = SystemProgram.createAccount({
+        fromPubkey: new PublicKey(publicKey.toString()),
+        newAccountPubkey: propertyNftMint.publicKey,
+        space: 82,
+        lamports: mintRentExempt,
+        programId: TOKEN_PROGRAM_ID
+      });
+      
+      // 2. Initialize mint instruction
+      const initMintIx = createInitializeMintInstruction(
+        propertyNftMint.publicKey,
+        0, // 0 decimals for NFT
+        new PublicKey(publicKey.toString()),
+        new PublicKey(publicKey.toString())
+      );
+      
+      // 3. Create associated token account for owner
       const ownerNftAccount = await getAssociatedTokenAddress(
         propertyNftMint.publicKey,
         new PublicKey(publicKey.toString())
       );
       
-      console.log("Owner NFT Account:", ownerNftAccount.toString());
+      const createATAIx = createAssociatedTokenAccountInstruction(
+        new PublicKey(publicKey.toString()),
+        ownerNftAccount,
+        new PublicKey(publicKey.toString()),
+        propertyNftMint.publicKey
+      );
       
-      console.log("Converting price to BN");
+      // 4. Mint one token to the owner
+      const mintToIx = createMintToInstruction(
+        propertyNftMint.publicKey,
+        ownerNftAccount,
+        new PublicKey(publicKey.toString()),
+        1, // Mint exactly 1 token for NFT
+        []
+      );
       
       // Convert price to lamports (as BN) - ensure it's a valid number first
       const priceInSol = Number(formData.price);
@@ -471,191 +558,114 @@ export function PropertyForm({ onClose }: PropertyFormProps) {
       }
       const squareFeetBN = new BN(sqFeet);
       
-      console.log("Getting fresh blockhash");
-      
-      // Prepare request to backend for fresh blockhash
-      const blockhashResponse = await axios.get(
-        `${API_URL}/api/blockhash`,
+      // 5. Create listing instruction
+      console.log("Building list_property instruction");
+      const listPropertyIx = buildInstruction(
+        program.programId,
+        "list_property",
+        [
+          formData.property_id,
+          price,
+          formData.metadata_uri,
+          formData.location,
+          squareFeetBN,
+          Number(formData.bedrooms),
+          Number(formData.bathrooms)
+        ], 
         {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('jwt_token')}`
-          }
+          marketplace: marketplacePDA,
+          property: propertyPDA,
+          owner: new PublicKey(publicKey.toString()),
+          property_nft_mint: propertyNftMint.publicKey,
+          owner_nft_account: ownerNftAccount,
+          systemProgram: SystemProgram.programId,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          rent: SYSVAR_RENT_PUBKEY,
         }
       );
-      const blockhash = blockhashResponse.data.blockhash;
       
-      console.log("Building transaction");
+      console.log("All instructions created successfully");
       
-      // Build transaction with explicit try/catch to catch any errors in the transaction building
-      let tx;
+      // Get fresh blockhash right before creating the transaction
+      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
+      console.log("Got fresh blockhash:", blockhash);
+      
+      // Create a single transaction with all instructions
+      const tx = new Transaction();
+      tx.add(createMintAccountIx);
+      tx.add(initMintIx);
+      tx.add(createATAIx);
+      tx.add(mintToIx);
+      tx.add(listPropertyIx);
+      
+      // Set recent blockhash and fee payer
+      tx.recentBlockhash = blockhash;
+      tx.feePayer = new PublicKey(publicKey.toString());
+      
+      // NFT mint keypair needs to sign
+      tx.partialSign(propertyNftMint);
+      
+      console.log("Transaction created and signed by NFT mint");
+      console.log("Transaction details:", debugTransaction(tx));
+      
+      // Sign with wallet
+      console.log("Signing transaction with wallet");
+      const signedTx = await anchorWallet.signTransaction(tx);
+      
+      console.log("Transaction fully signed");
+      
+      // Send and confirm transaction
+      console.log("Sending transaction to Solana network");
+      const signature = await connection.sendRawTransaction(signedTx.serialize(), {
+        skipPreflight: false,
+        preflightCommitment: 'confirmed'
+      });
+      
+      console.log("Transaction sent, signature:", signature);
+      
+      // Wait for confirmation with enough retry attempts
+      console.log("Waiting for transaction confirmation");
+      
       try {
-        // Ensure all account inputs are valid PublicKey objects
-        if (!marketplacePDA || !propertyPDA || !publicKey || !propertyNftMint.publicKey || !ownerNftAccount) {
-          throw new Error("One or more account addresses are invalid");
+        const confirmation = await connection.confirmTransaction({
+          signature,
+          blockhash,
+          lastValidBlockHeight
+        }, 'confirmed');
+        
+        if (confirmation.value.err) {
+          console.error("Transaction confirmed but has errors:", confirmation.value.err);
+          throw new Error(`Transaction confirmed but has errors: ${JSON.stringify(confirmation.value.err)}`);
         }
         
-        console.log("All accounts present before transaction build:", {
-          marketplace: marketplacePDA.toString(),
-          property: propertyPDA.toString(),
-          owner: publicKey.toString(),
-          property_nft_mint: propertyNftMint.publicKey.toString(),
-          owner_nft_account: ownerNftAccount.toString()
-        });
-
-        // Log program object info
-        console.log("Program info:", {
-          programId: program.programId.toString(),
-          provider: program.provider.connection.rpcEndpoint
-        });
-
-        console.log("Creating instruction directly");
+        console.log("Transaction confirmed successfully:", confirmation);
         
-        // Create instruction directly using our helper
-        const ixData = buildInstruction(
-          program.programId,
-          "list_property",
-          [
-            formData.property_id,
-            price,
-            formData.metadata_uri,
-            formData.location,
-            squareFeetBN,
-            Number(formData.bedrooms),
-            Number(formData.bathrooms)
-          ], 
-          {
-            marketplace: marketplacePDA,
-            property: propertyPDA,
-            owner: new PublicKey(publicKey.toString()),
-            // Ensure property_nft_mint is correctly passed
-            // The error 0x66 (InvalidNFTMint) indicates an issue with this account
-            property_nft_mint: propertyNftMint.publicKey,
-            owner_nft_account: ownerNftAccount,
-            systemProgram: SystemProgram.programId,
-            tokenProgram: TOKEN_PROGRAM_ID,
-            associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-            rent: SYSVAR_RENT_PUBKEY,
-          }
-        );
-          
-        console.log("Instruction created successfully");
+        // Now that transaction is confirmed, add property to backend
+        console.log("Transaction confirmed, notifying backend");
         
-        // Create a transaction manually
-        console.log("Creating transaction manually");
-        tx = new Transaction();
-        
-        // Add mint initialization instruction
-        // This is needed to properly initialize the NFT mint account
-        // Error 0x66 (InvalidNFTMint) occurs when the mint isn't properly initialized
-        console.log("Adding mint initialization instruction");
-        const mintRentExempt = await program.provider.connection.getMinimumBalanceForRentExemption(82);
-        
-        // Create mint account instruction
-        const createMintAccountIx = SystemProgram.createAccount({
-          fromPubkey: new PublicKey(publicKey.toString()),
-          newAccountPubkey: propertyNftMint.publicKey,
-          space: 82,
-          lamports: mintRentExempt,
-          programId: TOKEN_PROGRAM_ID
-        });
-        
-        // Initialize mint instruction - using the imported functions
-        const initMintIx = createInitializeMintInstruction(
-          propertyNftMint.publicKey,
-          0, // 0 decimals for NFT
-          new PublicKey(publicKey.toString()),
-          new PublicKey(publicKey.toString()) // Set freeze authority to owner as well
-        );
-        
-        // Create associated token account for owner
-        const createATAIx = createAssociatedTokenAccountInstruction(
-          new PublicKey(publicKey.toString()),
-          ownerNftAccount,
-          new PublicKey(publicKey.toString()),
-          propertyNftMint.publicKey
-        );
-        
-        // Mint one token to the owner - this is important to do BEFORE the list_property instruction
-        // The program expects the NFT to be already minted when list_property is called
-        const mintToIx = createMintToInstruction(
-          propertyNftMint.publicKey,
-          ownerNftAccount,
-          new PublicKey(publicKey.toString()),
-          1, // Mint exactly 1 token for NFT
-          []
-        );
-        
-        console.log("Created all token initialization instructions");
-        
-        // Add all instructions to transaction in the correct order
-        // The order is important - we need to fully initialize the NFT mint and mint a token
-        // before calling list_property
-        tx.add(createMintAccountIx);
-        tx.add(initMintIx);
-        tx.add(createATAIx);
-        tx.add(mintToIx);
-        
-        // Add the list_property instruction last, after the NFT is fully initialized
-        tx.add(ixData);
-        
-        console.log("Added all instructions to transaction");
-        
-        // Set recent blockhash
-        tx.recentBlockhash = blockhash;
-        tx.feePayer = new PublicKey(publicKey.toString());
-        
-        // Make sure the propertyNftMint is included as a signer
-        // This is critical for the NFT mint initialization to work properly
-        tx.partialSign(propertyNftMint);
-        
-        console.log("Transaction created and signed with propertyNftMint");
-        console.log("Transaction details:", debugTransaction(tx));
-        
-        // Log the signers for debugging
-        console.log("Transaction signers:", tx.signatures.map(s => s.publicKey.toString()));
-        console.log("Property NFT mint pubkey:", propertyNftMint.publicKey.toString());
-        console.log("Is property_nft_mint in signers:", tx.signatures.some(s => s.publicKey.equals(propertyNftMint.publicKey)));
-        
-        // Verify that the property_nft_mint is included in the transaction signers
-        if (!tx.signatures.some(s => s.publicKey.equals(propertyNftMint.publicKey))) {
-          throw new Error("Property NFT mint is not included as a signer in the transaction");
-        }
-        
-        // Sign with wallet
-        console.log("Signing transaction with wallet");
-        const signedTx = await anchorWallet.signTransaction(tx);
-        
-        console.log("Transaction signed successfully");
-        console.log("Signature details:", debugTransaction(signedTx));
-        
-        // Serialize the transaction
-        console.log("Serializing transaction");
-        // Make sure we're not requiring all signatures when serializing
-        // This is important because the backend will verify and process the transaction
-        // We need to include the propertyNftMint signature in the serialized transaction
-        const serializedTransaction = signedTx.serialize({verifySignatures: false, requireAllSignatures: false}).toString('base64');
-        
-        console.log("Transaction serialized, length:", serializedTransaction.length);
-        
-        // Send to backend
-        console.log("Sending transaction to backend");
-        // The backend expects only serialized_transaction and metadata
-        // The property_nft_mint keypair has already signed the transaction
-        const response = await axios.post(
-          `${API_URL}/api/transactions/submit`,
-          {
-            serialized_transaction: serializedTransaction,
-            metadata: JSON.stringify(propertyMetadata)
-          },
-          {
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${localStorage.getItem('jwt_token')}`
+        try {
+          // Send to backend - use the correct API endpoint
+          const response = await axios.post(
+            `${API_URL}/api/transactions/submit`,
+            {
+              signature: signature,
+              metadata: JSON.stringify(propertyMetadata)
+            },
+            {
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('jwt_token')}`
+              }
             }
-          }
-        );
-        
-        console.log("Transaction submitted successfully:", response.data);
+          );
+          
+          console.log("Backend notified successfully:", response.data);
+        } catch (backendErr) {
+          // Even if backend notification fails, continue with local state update
+          console.warn("Backend notification failed, but transaction was successful:", backendErr);
+          // Don't rethrow the error since the transaction succeeded
+        }
         
         // Create a plain serializable property object
         const newProperty = {
@@ -674,41 +684,79 @@ export function PropertyForm({ onClose }: PropertyFormProps) {
         
         toast({
           title: "Property Listed!",
-          description: `Your property has been successfully listed. Transaction: ${response.data.signature}`,
+          description: `Your property has been successfully listed. Transaction: ${signature}`,
         });
         
         onClose();
-      } catch (err) {
-        console.error("Error adding property:", err);
-        console.error("Detailed error info:", {
-          message: err.message,
-          stack: err.stack,
-          name: err.name
-        });
+      } catch (confirmErr) {
+        console.error("Error confirming transaction:", confirmErr);
         
-        // Extract more detailed error message if available from axios response
-        let errorMessage = err.message || "Unknown error";
-        if (err.response) {
-          console.error("Server response:", err.response.data);
-          errorMessage = err.response.data || errorMessage;
-          // If the error message is an object, try to extract a readable message
-          if (typeof errorMessage === 'object') {
-            errorMessage = JSON.stringify(errorMessage);
+        // Check if transaction was still successful despite confirmation error
+        try {
+          const status = await connection.getSignatureStatus(signature);
+          console.log("Manual signature status check:", status);
+          
+          if (status.value && !status.value.err) {
+            console.log("Transaction appears successful despite confirmation error");
+            
+            // Still add the property and notify backend
+            // Create a plain serializable property object
+            const newProperty = {
+              location: formData.location,
+              price: Number(formData.price),
+              square_feet: Number(formData.square_feet),
+              bedrooms: Number(formData.bedrooms),
+              bathrooms: Number(formData.bathrooms),
+              metadata_uri: formData.metadata_uri,
+              owner: publicKey.toString(),
+              property_id: formData.property_id
+            };
+            
+            // Add property to local state
+            addProperty(newProperty);
+            
+            toast({
+              title: "Property Listed!",
+              description: `Your property has been successfully listed. Transaction: ${signature}`,
+            });
+            
+            onClose();
+            return;
           }
+        } catch (statusErr) {
+          console.error("Error checking transaction status:", statusErr);
         }
         
-        setErrors({ general: `Failed to add property: ${errorMessage}` });
-        setIsSubmitting(false);
-        
-        toast({
-          variant: "destructive",
-          title: "Transaction Failed",
-          description: `Could not list property: ${errorMessage}`,
-        });
+        throw confirmErr;
       }
-    } catch (error) {
-      console.error("Error adding property:", error);
-      setErrors({ general: `Failed to add property: ${error.message || "Unknown error"}` });
+    } catch (err) {
+      console.error("Error adding property:", err);
+      console.error("Detailed error info:", {
+        message: err.message,
+        stack: err.stack,
+        name: err.name
+      });
+      
+      // Extract more detailed error message if available from axios response
+      let errorMessage = err.message || "Unknown error";
+      if (err.response) {
+        console.error("Server response:", err.response.data);
+        errorMessage = err.response.data || errorMessage;
+        // If the error message is an object, try to extract a readable message
+        if (typeof errorMessage === 'object') {
+          errorMessage = JSON.stringify(errorMessage);
+        }
+      }
+      
+      setErrors({ general: `Failed to add property: ${errorMessage}` });
+      setIsSubmitting(false);
+      
+      toast({
+        variant: "destructive",
+        title: "Transaction Failed",
+        description: `Could not list property: ${errorMessage}`,
+      });
+    } finally {
       setIsSubmitting(false);
     }
   };

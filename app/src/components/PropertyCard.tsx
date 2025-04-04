@@ -21,7 +21,21 @@ export const PropertyCard = ({ property, onUpdateProperty, onMakeOffer, onExecut
   const { publicKey } = useWallet();
   const [showActions, setShowActions] = useState(false);
   
-  const isOwner = publicKey?.toBase58() === property.owner.toBase58();
+  // Handle both string and PublicKey formats for the owner
+  const ownerString = typeof property.owner === 'string' 
+    ? property.owner 
+    : property.owner.toBase58?.() || property.owner.toString();
+
+  // Convert publicKey to string safely
+  const publicKeyString = publicKey 
+    ? (publicKey.toBase58?.() || publicKey.toString()) 
+    : "";
+  
+  // Check if current user is the owner
+  const isOwner = publicKeyString && ownerString 
+    ? publicKeyString === ownerString
+    : false;
+    
   const hasPendingOffers = offers.some(offer => offer.status === 'Pending');
   // Generate a random gradient for each property card
   const gradientColors = [
