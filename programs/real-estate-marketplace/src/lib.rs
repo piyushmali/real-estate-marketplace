@@ -100,13 +100,58 @@ pub mod real_estate_marketplace {
         let property = &mut ctx.accounts.property;
         let clock = Clock::get()?;
 
+        msg!("DEBUG: Starting update_property for property ID: {}", property.property_id);
+        msg!("DEBUG: Current property owner: {}", property.owner.to_string());
+        msg!("DEBUG: Transaction signer: {}", ctx.accounts.owner.key().to_string());
+        msg!("DEBUG: NFT mint from property: {}", property.nft_mint.to_string());
+        msg!("DEBUG: NFT mint from transaction: {}", ctx.accounts.property_nft_mint.key().to_string());
+        msg!("DEBUG: Token account provided: {}", ctx.accounts.owner_nft_account.key().to_string());
+
+        // Log ownership constraint check
+        if property.owner != ctx.accounts.owner.key() {
+            msg!("ERROR: Property owner mismatch!");
+            msg!("DEBUG: Property owner: {}", property.owner.to_string());
+            msg!("DEBUG: Signer: {}", ctx.accounts.owner.key().to_string());
+            return Err(ErrorCode::NotPropertyOwner.into());
+        }
+        msg!("DEBUG: Owner check passed");
+
+        // Log NFT mint constraint check
+        if property.nft_mint != ctx.accounts.property_nft_mint.key() {
+            msg!("ERROR: NFT mint mismatch!");
+            msg!("DEBUG: Property NFT mint: {}", property.nft_mint.to_string());
+            msg!("DEBUG: Transaction NFT mint: {}", ctx.accounts.property_nft_mint.key().to_string());
+            return Err(ErrorCode::InvalidNFTMint.into());
+        }
+        msg!("DEBUG: NFT mint check passed");
+
         // Deserialize the token account to check ownership
-        let owner_nft_account = TokenAccount::try_deserialize(&mut &ctx.accounts.owner_nft_account.data.borrow()[..])?;
-        require!(owner_nft_account.amount == 1, ErrorCode::NotNFTOwner);
+        msg!("DEBUG: Attempting to deserialize token account");
+        let owner_nft_account = match TokenAccount::try_deserialize(&mut &ctx.accounts.owner_nft_account.data.borrow()[..]) {
+            Ok(account) => account,
+            Err(err) => {
+                msg!("ERROR: Failed to deserialize token account: {:?}", err);
+                return Err(ErrorCode::InvalidTokenAccount.into());
+            }
+        };
+        
+        msg!("DEBUG: Token account deserialized successfully");
+        msg!("DEBUG: Token account owner: {}", owner_nft_account.owner.to_string());
+        msg!("DEBUG: Token account mint: {}", owner_nft_account.mint.to_string());
+        msg!("DEBUG: Token account amount: {}", owner_nft_account.amount);
+
+        // Modified the check to use >= instead of == to allow multiple tokens
+        if owner_nft_account.amount < 1 {
+            msg!("ERROR: Token account has insufficient tokens");
+            msg!("DEBUG: Token amount: {}", owner_nft_account.amount);
+            return Err(ErrorCode::NotNFTOwner.into());
+        }
+        msg!("DEBUG: Token amount check passed");
 
         if let Some(new_price) = price {
             require!(new_price > 0, ErrorCode::InvalidPrice);
             property.price = new_price;
+            msg!("DEBUG: Updated price to: {}", new_price);
         }
 
         if let Some(new_metadata_uri) = metadata_uri {
@@ -114,14 +159,17 @@ pub mod real_estate_marketplace {
                 new_metadata_uri.len() <= 200,
                 ErrorCode::MetadataUriTooLong
             );
-            property.metadata_uri = new_metadata_uri;
+            property.metadata_uri = new_metadata_uri.clone();
+            msg!("DEBUG: Updated metadata_uri to: {}", new_metadata_uri);
         }
 
         if let Some(new_is_active) = is_active {
             property.is_active = new_is_active;
+            msg!("DEBUG: Updated is_active to: {}", new_is_active);
         }
 
         property.updated_at = clock.unix_timestamp;
+        msg!("DEBUG: Property updated successfully");
 
         emit!(PropertyUpdated {
             property: property.key(),
@@ -374,7 +422,7 @@ pub struct ListProperty<'info> {
 pub struct UpdateProperty<'info> {
     #[account(
         mut,
-        constraint = property.owner == *owner.key
+        constraint = property.owner == *owner.key @ ErrorCode::NotPropertyOwner
     )]
     pub property: Account<'info, Property>,
     #[account(mut)]
@@ -382,12 +430,12 @@ pub struct UpdateProperty<'info> {
     /// CHECK: This is the owner's NFT token account
     #[account(
         mut,
-        constraint = owner_nft_account.owner == &token::ID
+        constraint = owner_nft_account.owner == &token::ID @ ErrorCode::InvalidTokenAccount
     )]
     pub owner_nft_account: AccountInfo<'info>,
     /// CHECK: This is the NFT mint account
     #[account(
-        constraint = property.nft_mint == *property_nft_mint.key
+        constraint = property.nft_mint == *property_nft_mint.key @ ErrorCode::InvalidNFTMint
     )]
     pub property_nft_mint: AccountInfo<'info>,
 }

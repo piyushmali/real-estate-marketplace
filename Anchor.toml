@@ -15,7 +15,7 @@ real_estate_marketplace = "BdSKkquiFKRqxbXYC3Jufz9K59xisZ33VNbyaigkStW6"
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "devnet"
+cluster = "Devnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]

@@ -596,7 +596,7 @@ export function PropertyForm({ onClose }: PropertyFormProps) {
       tx.add(createMintAccountIx);
       tx.add(initMintIx);
       tx.add(createATAIx);
-      tx.add(mintToIx);
+      // tx.add(mintToIx);
       tx.add(listPropertyIx);
       
       // Set recent blockhash and fee payer
