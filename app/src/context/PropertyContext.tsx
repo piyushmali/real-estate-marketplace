@@ -20,6 +20,11 @@ export interface Property {
   bathrooms: number;
   metadata_uri: string;
   owner: PublicKey | string;
+  is_active?: boolean;
+  description?: string;
+  nft_mint?: string;
+  nft_mint_address?: string;
+  nft_token_account?: string;
 }
 
 // Response from backend API
@@ -36,6 +41,8 @@ interface PropertyResponse {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  nft_mint_address?: string;
+  nft_token_account?: string;
 }
 
 // Mock properties for local testing
@@ -118,7 +125,11 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
         bedrooms: Number(item.bedrooms),
         bathrooms: Number(item.bathrooms),
         metadata_uri: item.metadata_uri || "https://images.unsplash.com/photo-1582407947304-fd86f028f716?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=800&q=80",
-        owner: new PublicKey(item.owner_wallet)
+        owner: new PublicKey(item.owner_wallet),
+        is_active: item.is_active,
+        description: item.metadata_uri,
+        nft_mint_address: item.nft_mint_address,
+        nft_token_account: item.nft_token_account
       }));
       
       console.log(`Fetched ${formattedProperties.length} properties from backend:`, formattedProperties);

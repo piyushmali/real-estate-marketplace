@@ -69,7 +69,7 @@ async fn main() -> std::io::Result<()> {
         // Configure CORS
         let cors = Cors::default()
             .allow_any_origin()  // In production, you might want to specify specific origins
-            .allowed_methods(vec!["GET", "POST"])
+            .allowed_methods(vec!["GET", "POST", "PATCH"])
             .allowed_headers(vec![
                 actix_web::http::header::AUTHORIZATION,
                 actix_web::http::header::ACCEPT,
@@ -86,6 +86,9 @@ async fn main() -> std::io::Result<()> {
             .route("/api/instructions/submit", web::post().to(transaction::submit_instructions))
             .route("/api/properties", web::get().to(property::get_properties))
             .route("/api/properties/{property_id}", web::get().to(property::get_property))
+            // New endpoints
+            .route("/api/transactions/submit-no-update", web::post().to(transaction::submit_transaction_no_update))
+            .route("/api/properties/{property_id}/update", web::patch().to(property::update_property))
     })
     .bind(("127.0.0.1", port))?
     .run()

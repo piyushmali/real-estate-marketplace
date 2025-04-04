@@ -653,7 +653,9 @@ export function PropertyForm({ onClose }: PropertyFormProps) {
             location: formData.location,
             square_feet: Number(formData.square_feet),
             bedrooms: Number(formData.bedrooms),
-            bathrooms: Number(formData.bathrooms)
+            bathrooms: Number(formData.bathrooms),
+            nft_mint_address: propertyNftMint.publicKey.toString(),
+            nft_token_account: ownerNftAccount.toString()
           });
           
           // Send to backend - use the correct API endpoint with the expected field names
@@ -688,7 +690,9 @@ export function PropertyForm({ onClose }: PropertyFormProps) {
           bathrooms: Number(formData.bathrooms),
           metadata_uri: formData.metadata_uri,
           owner: publicKey.toString(),
-          property_id: formData.property_id
+          property_id: formData.property_id,
+          nft_mint_address: propertyNftMint.publicKey.toString(),
+          nft_token_account: ownerNftAccount.toString()
         };
         
         // Add property to local state
@@ -724,7 +728,9 @@ export function PropertyForm({ onClose }: PropertyFormProps) {
               bathrooms: Number(formData.bathrooms),
               metadata_uri: formData.metadata_uri,
               owner: publicKey.toString(),
-              property_id: formData.property_id
+              property_id: formData.property_id,
+              nft_mint_address: propertyNftMint.publicKey.toString(),
+              nft_token_account: ownerNftAccount.toString()
             };
             
             // Add property to local state

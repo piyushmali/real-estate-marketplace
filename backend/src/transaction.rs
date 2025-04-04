@@ -60,6 +60,8 @@ pub struct ListPropertyRequest {
     pub square_feet: u64,
     pub bedrooms: u8,
     pub bathrooms: u8,
+    pub nft_mint_address: String,  // New field
+    pub nft_token_account: String, // New field 
 }
 
 #[derive(Debug, Serialize)]
@@ -217,6 +219,8 @@ pub async fn submit_transaction(
         is_active: true,
         created_at: now,
         updated_at: now,
+        nft_mint_address: metadata.nft_mint_address,  // New field
+        nft_token_account: metadata.nft_token_account, // New field
     };
 
     match diesel::insert_into(properties::table)
@@ -234,6 +238,51 @@ pub async fn submit_transaction(
             HttpResponse::InternalServerError().body(format!("Database error: {}", e))
         }
     }
+}
+
+pub async fn submit_transaction_no_update(
+    req: HttpRequest,
+    data: web::Json<SubmitTransactionRequest>,
+) -> HttpResponse {
+    // Verify authentication token
+    let wallet_address = match verify_token(&req).await {
+        Ok(wallet) => wallet,
+        Err(resp) => return resp,
+    };
+
+    let _owner = match Pubkey::from_str(&wallet_address) {
+        Ok(pubkey) => pubkey,
+        Err(_) => return HttpResponse::BadRequest().body("Invalid wallet address"),
+    };
+
+    // Decode the base64 serialized transaction
+    let tx_bytes = match general_purpose::STANDARD.decode(&data.serialized_transaction) {
+        Ok(bytes) => bytes,
+        Err(_) => return HttpResponse::BadRequest().body("Invalid serialized transaction"),
+    };
+
+    // Deserialize the transaction
+    let tx = match bincode::deserialize::<Transaction>(&tx_bytes) {
+        Ok(transaction) => transaction,
+        Err(e) => return HttpResponse::BadRequest().body(format!("Failed to deserialize transaction: {}", e)),
+    };
+
+    // Offload blocking RPC call to a separate thread
+    let tx_signature = match web::block(move || {
+        let rpc_client = RpcClient::new("https://api.devnet.solana.com".to_string());
+        let signature = rpc_client.send_and_confirm_transaction(&tx)?;
+        Ok::<Signature, TransactionError>(signature)
+    }).await {
+        Ok(Ok(sig)) => sig,
+        Ok(Err(e)) => return HttpResponse::InternalServerError().body(format!("Transaction failed: {}", e)),
+        Err(e) => return HttpResponse::InternalServerError().body(format!("Thread pool error: {}", e)),
+    };
+
+    // Return transaction signature without updating the database
+    info!("Transaction submitted successfully without database update");
+    HttpResponse::Ok().json(TransactionResponse {
+        signature: tx_signature.to_string(),
+    })
 }
 
 // New endpoint to submit transaction instructions
@@ -347,6 +396,8 @@ pub async fn submit_instructions(
         is_active: true,
         created_at: now,
         updated_at: now,
+        nft_mint_address: metadata.nft_mint_address,  // New field
+        nft_token_account: metadata.nft_token_account, // New field
     };
 
     match diesel::insert_into(properties::table)
