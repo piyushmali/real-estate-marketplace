@@ -29,6 +29,13 @@ pub struct OfferResponse {
     pub offer: Option<Offer>,
 }
 
+#[derive(Serialize)]
+pub struct OffersResponse {
+    pub success: bool,
+    pub message: String,
+    pub offers: Vec<Offer>,
+}
+
 /// Creates a new offer for a property
 pub async fn create_offer(
     req: HttpRequest,
@@ -160,4 +167,45 @@ pub async fn update_offer(
             HttpResponse::InternalServerError().body(format!("Failed to update offer: {}", e))
         }
     }
+}
+
+/// Retrieves all offers made by the current user
+pub async fn get_user_offers(req: HttpRequest) -> impl Responder {
+    // Verify authentication token
+    let wallet_address = match verify_token(&req).await {
+        Ok(wallet) => wallet,
+        Err(resp) => return resp,
+    };
+
+    let mut conn = match db::establish_connection() {
+        Ok(conn) => conn,
+        Err(e) => {
+            error!("Failed to connect to database: {}", e);
+            return HttpResponse::InternalServerError().body("Database connection failed");
+        }
+    };
+
+    info!("Fetching offers for user: {}", wallet_address);
+
+    // Query all offers where buyer_wallet matches the authenticated user
+    let user_offers = match offers
+        .filter(buyer_wallet.eq(&wallet_address))
+        .order_by(created_at.desc())
+        .load::<Offer>(&mut conn) 
+    {
+        Ok(result) => result,
+        Err(e) => {
+            error!("Failed to fetch user offers: {}", e);
+            return HttpResponse::InternalServerError().body(format!("Failed to fetch offers: {}", e));
+        }
+    };
+
+    info!("Found {} offers for user {}", user_offers.len(), wallet_address);
+
+    // Return the offers
+    HttpResponse::Ok().json(OffersResponse {
+        success: true,
+        message: format!("Successfully retrieved {} offers", user_offers.len()),
+        offers: user_offers,
+    })
 } 

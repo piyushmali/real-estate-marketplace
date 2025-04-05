@@ -47,4 +47,30 @@ export const updateOffer = async (offerId: string, status: 'accepted' | 'rejecte
     console.error('Error updating offer:', error);
     throw error;
   }
+};
+
+// Fetch user's offers
+export const getUserOffers = async (token: string): Promise<Offer[]> => {
+  try {
+    console.log("Fetching user offers with token:", token ? "Token exists" : "No token");
+    
+    const response = await axios.get(
+      `${API_URL}/api/offers/my-offers`,
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+      }
+    );
+    
+    if (response.data && response.data.success) {
+      return response.data.offers || [];
+    } else {
+      console.warn("Unexpected response format:", response.data);
+      return [];
+    }
+  } catch (error) {
+    console.error('Error fetching offers:', error);
+    throw error;
+  }
 }; 

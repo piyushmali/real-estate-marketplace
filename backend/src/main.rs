@@ -92,6 +92,7 @@ async fn main() -> std::io::Result<()> {
             .route("/api/properties/{property_id}/update", web::patch().to(property::update_property))
             // Offer endpoints
             .route("/api/offers", web::post().to(offer::create_offer))
+            .route("/api/offers/my-offers", web::get().to(offer::get_user_offers))
             .route("/api/offers/{offer_id}", web::patch().to(offer::update_offer))
     })
     .bind(("127.0.0.1", port))?
