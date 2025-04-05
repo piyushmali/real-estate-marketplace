@@ -12,6 +12,7 @@ mod models;
 mod schema;
 mod transaction;
 mod property;
+mod offer;
 
 #[derive(Deserialize)]
 struct AuthRequest {
@@ -89,6 +90,9 @@ async fn main() -> std::io::Result<()> {
             // New endpoints
             .route("/api/transactions/submit-no-update", web::post().to(transaction::submit_transaction_no_update))
             .route("/api/properties/{property_id}/update", web::patch().to(property::update_property))
+            // Offer endpoints
+            .route("/api/offers", web::post().to(offer::create_offer))
+            .route("/api/offers/{offer_id}", web::patch().to(offer::update_offer))
     })
     .bind(("127.0.0.1", port))?
     .run()

@@ -10,6 +10,7 @@ import MyOffers from "./pages/MyOffers";
 import Transactions from "./pages/Transactions";
 import { WalletContextProvider } from "./context/WalletContext";
 import { PropertyProvider } from "./context/PropertyContext";
+import { AuthProvider } from "./contexts/AuthContext";
 
 function Router() {
   return (
@@ -27,14 +28,16 @@ function Router() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <WalletContextProvider>
-        <PropertyProvider>
-          <Layout>
-            <Router />
-          </Layout>
-          <Toaster />
-        </PropertyProvider>
-      </WalletContextProvider>
+      <AuthProvider>
+        <WalletContextProvider>
+          <PropertyProvider>
+            <Layout>
+              <Router />
+            </Layout>
+            <Toaster />
+          </PropertyProvider>
+        </WalletContextProvider>
+      </AuthProvider>
     </QueryClientProvider>
   );
 }

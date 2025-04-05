@@ -2,9 +2,14 @@ import { PropertyCard } from "./PropertyCard";
 import { useProperties } from "@/context/PropertyContext";
 import { useEffect, useState } from "react";
 import { Property } from "@/context/PropertyContext";
+import MakeOfferModal from "./MakeOfferModal";
+import { useAuth } from "../contexts/AuthContext";
 
 export function PropertyGrid() {
   const { properties, getProperties, isLoading, error, addProperty } = useProperties();
+  const { token } = useAuth();
+  const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
+  const [showOfferModal, setShowOfferModal] = useState(false);
   
   // Fetch properties when component mounts
   useEffect(() => {
@@ -15,6 +20,23 @@ export function PropertyGrid() {
   const handleUpdateProperty = (updatedProperty: Property) => {
     // Update the property in the local state by replacing the old one
     addProperty(updatedProperty);
+  };
+
+  // Handle make offer button click
+  const handleMakeOffer = (property: Property) => {
+    setSelectedProperty(property);
+    setShowOfferModal(true);
+  };
+
+  // Handle offer modal close
+  const handleCloseOfferModal = () => {
+    setShowOfferModal(false);
+  };
+
+  // Handle successful offer creation
+  const handleOfferSuccess = () => {
+    // You can refresh properties or offers if needed
+    getProperties();
   };
   
   // Loading state
@@ -52,14 +74,27 @@ export function PropertyGrid() {
   }
   
   return (
-    <div className="grid gap-8 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 mx-auto max-w-7xl px-4 py-6">
-      {properties.map((property) => (
-        <PropertyCard 
-          key={property.property_id} 
-          property={property} 
-          onUpdateProperty={handleUpdateProperty}
+    <>
+      <div className="grid gap-8 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 mx-auto max-w-7xl px-4 py-6">
+        {properties.map((property) => (
+          <PropertyCard 
+            key={property.property_id} 
+            property={property} 
+            onUpdateProperty={handleUpdateProperty}
+            onMakeOffer={handleMakeOffer}
+          />
+        ))}
+      </div>
+
+      {/* Make Offer Modal */}
+      {selectedProperty && (
+        <MakeOfferModal
+          propertyId={selectedProperty.property_id}
+          visible={showOfferModal}
+          onClose={handleCloseOfferModal}
+          onSuccess={handleOfferSuccess}
         />
-      ))}
-    </div>
+      )}
+    </>
   );
 }
