@@ -21,6 +21,7 @@ export default function Layout({ children }: LayoutProps) {
     { name: "Marketplace", path: "/", active: location === "/" },
     { name: "My Properties", path: "/my-properties", active: location === "/my-properties" },
     { name: "My Offers", path: "/my-offers", active: location === "/my-offers" },
+    { name: "Received Offers", path: "/received-offers", active: location === "/received-offers" },
     { name: "Transactions", path: "/transactions", active: location === "/transactions" },
   ];
   

@@ -7,6 +7,7 @@ import Layout from "./components/Layout";
 import Marketplace from "./pages/Marketplace";
 import MyProperties from "./pages/MyProperties";
 import MyOffers from "./pages/MyOffers";
+import ReceivedOffers from "./pages/ReceivedOffers";
 import Transactions from "./pages/Transactions";
 import { WalletContextProvider } from "./context/WalletContext";
 import { PropertyProvider } from "./context/PropertyContext";
@@ -19,6 +20,7 @@ function Router() {
       <Route path="/marketplace" component={Marketplace} />
       <Route path="/my-properties" component={MyProperties} />
       <Route path="/my-offers" component={MyOffers} />
+      <Route path="/received-offers" component={ReceivedOffers} />
       <Route path="/transactions" component={Transactions} />
       <Route component={NotFound} />
     </Switch>

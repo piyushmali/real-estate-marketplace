@@ -25,6 +25,9 @@ export function Navbar() {
             <Link href="/my-offers" className="text-gray-700 hover:text-blue-700">
               My Offers
             </Link>
+            <Link href="/received-offers" className="text-gray-700 hover:text-blue-700">
+              Received Offers
+            </Link>
             <Link href="/transactions" className="text-gray-700 hover:text-blue-700">
               Transactions
             </Link>
