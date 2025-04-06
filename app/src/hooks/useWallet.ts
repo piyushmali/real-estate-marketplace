@@ -10,17 +10,33 @@ export function useWallet() {
   const { publicKey, connected, connecting, disconnect, select, wallet, wallets } = useSolanaWallet();
   const connection = new Connection(RPC_URL, 'confirmed');
   const [balance, setBalance] = useState<number | null>(null);
+  const [previousWallet, setPreviousWallet] = useState<string | null>(null);
 
   useEffect(() => {
     if (connected && publicKey) {
+      // Track wallet changes
+      const currentWallet = publicKey.toString();
+      if (previousWallet && previousWallet !== currentWallet) {
+        console.log("Wallet changed from", previousWallet, "to", currentWallet);
+        // Trigger a custom event that other components can listen for
+        window.dispatchEvent(new CustomEvent('walletChanged', { 
+          detail: { previous: previousWallet, current: currentWallet }
+        }));
+      }
+      setPreviousWallet(currentWallet);
+      
       // Get and set balance
       connection.getBalance(publicKey).then(balance => {
         setBalance(balance / 1000000000); // Convert lamports to SOL
       });
     } else {
       setBalance(null);
+      if (previousWallet) {
+        console.log("Wallet disconnected:", previousWallet);
+        setPreviousWallet(null);
+      }
     }
-  }, [connected, publicKey, connection]);
+  }, [connected, publicKey, connection, previousWallet]);
 
   const connectWallet = async () => {
     // If we have wallets, select the first one (usually Phantom)

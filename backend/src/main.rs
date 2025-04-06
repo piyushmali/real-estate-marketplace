@@ -45,7 +45,24 @@ async fn health_check() -> impl Responder {
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    dotenv().ok();
+    // Load environment variables from .env file - make sure this happens first
+    if let Err(e) = dotenv::dotenv() {
+        eprintln!("Failed to load .env file: {}", e);
+    }
+    
+    // Print out loaded environment variables for debugging (never do this in production!)
+    if let Ok(db_url) = env::var("DATABASE_URL") {
+        info!("Loaded DATABASE_URL: {}", db_url);
+    } else {
+        error!("DATABASE_URL not found in environment!");
+    }
+    
+    if let Ok(_) = env::var("JWT_SECRET") {
+        info!("JWT_SECRET loaded successfully");
+    } else {
+        error!("JWT_SECRET not found in environment!");
+    }
+    
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::INFO)
         .init();

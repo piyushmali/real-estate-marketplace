@@ -51,34 +51,23 @@ export const useAuth = () => {
     }
   }, [token, connected, publicKey]);
 
-  // Check wallet connection and token validity
+  // Check wallet connection changes
   useEffect(() => {
-    const checkAuthentication = () => {
-      // If wallet is connected but not authenticated
-      if (connected && publicKey) {
-        // Check if we have a valid token
-        if (!isAuthenticated) {
-          // Check if a token exists but wasn't validated yet
-          const existingToken = getToken();
-          if (existingToken) {
-            // Validate the token for this wallet
-            const payload = parseJwt(existingToken);
-            if (payload && payload.sub === publicKey && isValidToken()) {
-              // Token is valid for this wallet
-              setToken(existingToken);
-              setIsAuthenticated(true);
-              console.log("Found valid token, auto-authenticated");
-            } else {
-              // Token is invalid or for different wallet, clear it
-              clearToken();
-            }
-          }
+    if (connected && publicKey) {
+      // If connected with a wallet, check if our stored token matches this wallet
+      const storedToken = getToken();
+      if (storedToken) {
+        const payload = parseJwt(storedToken);
+        if (payload && payload.sub !== publicKey) {
+          console.warn("Wallet changed - clearing previous token");
+          logout(); // Clear token for previous wallet
         }
       }
-    };
-
-    checkAuthentication();
-  }, [connected, publicKey, isAuthenticated]);
+    } else if (!connected && token) {
+      // If wallet disconnected but we have a token, clear it
+      logout();
+    }
+  }, [connected, publicKey]);
 
   // Clear authentication if wallet disconnects
   useEffect(() => {
@@ -105,6 +94,10 @@ export const useAuth = () => {
       if (payload && payload.sub === publicKey) {
         console.log("Already authenticated with this wallet");
         return; // Already authenticated with this wallet
+      } else {
+        // Clear token if it belongs to a different wallet
+        console.log("Token belongs to a different wallet, clearing it");
+        logout();
       }
     }
 
@@ -114,7 +107,7 @@ export const useAuth = () => {
     try {
       const payload = await signWithPhantom();
       
-      // Verify the payload belongs to the connected wallet
+      // Double-check the payload belongs to the connected wallet
       if (payload.public_key !== publicKey) {
         throw new Error("Wallet mismatch. Please ensure you're using the connected wallet.");
       }
