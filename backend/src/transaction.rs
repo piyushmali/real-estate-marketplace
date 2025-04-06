@@ -125,6 +125,9 @@ pub async fn verify_token(req: &HttpRequest) -> Result<String, HttpResponse> {
         Err(e) => return Err(HttpResponse::Unauthorized().body(format!("Invalid token: {}", e))),
     };
 
+    // Add some debug logging to see what wallet address is being returned
+    info!("Token verified for wallet: {}", token_data.claims.sub);
+    
     Ok(token_data.claims.sub)
 }
 

@@ -11,6 +11,8 @@ export function useWallet() {
   const connection = new Connection(RPC_URL, 'confirmed');
   const [balance, setBalance] = useState<number | null>(null);
   const [previousWallet, setPreviousWallet] = useState<string | null>(null);
+  // State to track if we need to force authentication
+  const [needsAuthentication, setNeedsAuthentication] = useState<boolean>(false);
 
   useEffect(() => {
     if (connected && publicKey) {
@@ -18,9 +20,15 @@ export function useWallet() {
       const currentWallet = publicKey.toString();
       if (previousWallet && previousWallet !== currentWallet) {
         console.log("Wallet changed from", previousWallet, "to", currentWallet);
+        
+        // Set flag that this wallet needs authentication
+        setNeedsAuthentication(true);
+        localStorage.removeItem("jwt_token");
+        localStorage.removeItem("wallet_address");
+        
         // Trigger a custom event that other components can listen for
         window.dispatchEvent(new CustomEvent('walletChanged', { 
-          detail: { previous: previousWallet, current: currentWallet }
+          detail: { previous: previousWallet, current: currentWallet, needsAuth: true }
         }));
       }
       setPreviousWallet(currentWallet);
@@ -34,6 +42,7 @@ export function useWallet() {
       if (previousWallet) {
         console.log("Wallet disconnected:", previousWallet);
         setPreviousWallet(null);
+        setNeedsAuthentication(false);
       }
     }
   }, [connected, publicKey, connection, previousWallet]);
@@ -47,11 +56,22 @@ export function useWallet() {
       } else {
         select(wallets[0].adapter.name);
       }
+      // New wallet will need authentication
+      setNeedsAuthentication(true);
     }
   };
 
   const disconnectWallet = () => {
+    // Clear auth state when disconnecting
+    localStorage.removeItem("jwt_token");
+    localStorage.removeItem("wallet_address");
     disconnect();
+    setNeedsAuthentication(false);
+  };
+
+  // Reset the needs authentication flag
+  const setAuthenticated = () => {
+    setNeedsAuthentication(false);
   };
 
   return {
@@ -60,6 +80,8 @@ export function useWallet() {
     connecting,
     balance,
     connectWallet,
-    disconnectWallet
+    disconnectWallet,
+    needsAuthentication,
+    setAuthenticated
   };
 } 

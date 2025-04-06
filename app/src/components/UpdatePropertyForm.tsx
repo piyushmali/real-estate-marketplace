@@ -108,23 +108,17 @@ export function UpdatePropertyForm({ property, onClose, onSuccess }: UpdatePrope
     return Object.keys(newErrors).length === 0;
   };
 
-  // Get auth token either from localStorage or directly from auth context
+  // Get auth token from localStorage
   const getAuthToken = (): string => {
-    // Try localStorage first
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('jwt_token');
     if (token) {
       return token;
     }
     
-    // If no token in localStorage but user is authenticated, try to get from auth context
-    if (auth.isAuthenticated) {
-      // Access token field directly from auth object
-      const authToken = (auth as any).token;
-      if (authToken) {
-        // Save to localStorage for future use
-        localStorage.setItem('token', authToken);
-        return authToken;
-      }
+    // Try to get from session storage as fallback
+    const sessionToken = sessionStorage.getItem('jwt_token');
+    if (sessionToken) {
+      return sessionToken;
     }
     
     throw new Error("Authentication token not found. Please login again.");

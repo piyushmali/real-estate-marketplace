@@ -1,17 +1,23 @@
 import axios from 'axios';
 import { Offer } from '../types/offer';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8080';
+const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8080';
 
 export const createOffer = async (propertyId: string, amount: number, expirationDays: number, token: string): Promise<Offer> => {
   try {
     console.log("Creating offer with token:", token ? "Token exists" : "No token");
+    console.log(`Creating offer for ${propertyId} with amount ${amount} SOL and expiration ${expirationDays} days`);
+
+    // Convert SOL to lamports (1 SOL = 1,000,000,000 lamports)
+    const amountInLamports = Math.floor(amount * 1_000_000_000);
+    
+    console.log(`Amount in lamports: ${amountInLamports}`);
     
     const response = await axios.post(
       `${API_URL}/api/offers`,
       {
         property_id: propertyId,
-        amount,
+        amount: amountInLamports, // Send amount in lamports to match backend expectation
         expiration_days: expirationDays,
       },
       {

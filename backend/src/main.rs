@@ -23,6 +23,10 @@ struct AuthRequest {
 
 async fn authenticate(req: web::Json<AuthRequest>) -> impl Responder {
     let message = format!("Timestamp: {}", req.timestamp);
+    
+    // Add debug logging
+    info!("Authentication request received for wallet: {}", req.public_key);
+    
     if auth::verify_wallet_signature(&req.public_key, &req.signature, &message) {
         match auth::generate_jwt(&req.public_key) {
             Ok(token) => {

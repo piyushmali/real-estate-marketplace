@@ -35,13 +35,13 @@ export default function RespondToOfferModal({
 
   // Get auth token from localStorage
   const getAuthToken = (): string => {
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('jwt_token');
     if (token) {
       return token;
     }
     
     // Try to get from session storage as fallback
-    const sessionToken = sessionStorage.getItem('token');
+    const sessionToken = sessionStorage.getItem('jwt_token');
     if (sessionToken) {
       return sessionToken;
     }

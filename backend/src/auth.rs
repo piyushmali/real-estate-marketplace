@@ -7,7 +7,7 @@ use solana_sdk::signature::Signature;
 use std::env;
 use std::str::FromStr;
 use uuid::Uuid;
-use tracing::error;
+use tracing::{error, info};
 
 use crate::db;
 use crate::models::User;
@@ -25,6 +25,9 @@ pub fn generate_jwt(wallet_address: &str) -> Result<String, jsonwebtoken::errors
         .checked_add_signed(Duration::hours(24))
         .expect("valid timestamp")
         .timestamp() as usize;
+
+    // Add logging to see what wallet address is being used for the JWT
+    info!("Generating JWT for wallet: {}", wallet_address);
 
     let claims = Claims {
         sub: wallet_address.to_string(),

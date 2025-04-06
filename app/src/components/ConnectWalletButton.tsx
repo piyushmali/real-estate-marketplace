@@ -11,7 +11,7 @@ import { Copy, ExternalLink, LogOut } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 
 export function ConnectWalletButton() {
-  const { connected, connectWallet, disconnectWallet, publicKey } = useWallet();
+  const { connected, connectWallet, disconnectWallet, publicKey, needsAuthentication, setAuthenticated } = useWallet();
   const { authenticate, token, logout, loading, error, isAuthenticated } = useAuth();
   const { toast } = useToast();
   const [isConnecting, setIsConnecting] = useState(false);
@@ -29,6 +29,14 @@ export function ConnectWalletButton() {
       return () => clearTimeout(timer);
     }
   }, [error]);
+
+  // Auto-authenticate when needed
+  useEffect(() => {
+    if (connected && needsAuthentication && !isAuthenticated && !loading) {
+      console.log("Wallet needs authentication - automatically authenticating");
+      handleAuthenticate();
+    }
+  }, [connected, needsAuthentication, isAuthenticated, loading]);
 
   const handleConnect = async () => {
     try {
@@ -84,8 +92,10 @@ export function ConnectWalletButton() {
   const handleAuthenticate = async () => {
     try {
       setErrorMessage(null);
-      if (connected && !isAuthenticated) {
+      if (connected && (!isAuthenticated || needsAuthentication)) {
         await authenticate();
+        // Mark as authenticated so we don't keep prompting
+        setAuthenticated();
         toast({
           title: "Authenticated",
           description: "You have been authenticated successfully"
@@ -138,7 +148,7 @@ export function ConnectWalletButton() {
     );
   }
 
-  if (connected && !isAuthenticated) {
+  if (connected && (!isAuthenticated || needsAuthentication)) {
     return (
       <div className="relative">
         <button

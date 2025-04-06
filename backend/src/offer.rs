@@ -53,6 +53,24 @@ pub async fn create_offer(
         Err(resp) => return resp,
     };
 
+    // Add detailed logging for the wallet address
+    info!("Creating offer with authenticated wallet: {}", wallet_address);
+
+    // Extract and log Authorization header for debugging
+    if let Some(auth_header) = req.headers().get("Authorization") {
+        if let Ok(auth_str) = auth_header.to_str() {
+            if auth_str.starts_with("Bearer ") {
+                info!("Using Bearer token from header");
+            } else {
+                error!("Authorization header doesn't start with 'Bearer '");
+            }
+        } else {
+            error!("Failed to convert Authorization header to string");
+        }
+    } else {
+        error!("No Authorization header found in request");
+    }
+
     let mut conn = match db::establish_connection() {
         Ok(conn) => conn,
         Err(e) => {

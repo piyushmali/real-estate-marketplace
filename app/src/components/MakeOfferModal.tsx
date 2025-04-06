@@ -37,13 +37,13 @@ export default function MakeOfferModal({
 
   // Get auth token from localStorage - same approach as in UpdatePropertyForm
   const getAuthToken = (): string => {
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('jwt_token');
     if (token) {
       return token;
     }
     
     // Try to get from session storage as fallback
-    const sessionToken = sessionStorage.getItem('token');
+    const sessionToken = sessionStorage.getItem('jwt_token');
     if (sessionToken) {
       return sessionToken;
     }
@@ -204,8 +204,9 @@ export default function MakeOfferModal({
       const walletPublicKey = new PublicKey(walletPublicKeyStr);
       console.log("Using wallet public key:", walletPublicKey.toString());
       
-      // First, create the offer in the database
+      // First, create the offer in the database - using the token which contains the correct wallet address
       console.log(`Creating offer for property ${propertyId} with amount ${amount} and expiration days ${expirationDays}`);
+      console.log(`Connected wallet: ${walletPublicKeyStr}`);
       const offer = await createOffer(
         propertyId,
         Number(amount),
