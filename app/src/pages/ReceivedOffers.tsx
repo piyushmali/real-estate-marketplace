@@ -50,7 +50,7 @@ export default function ReceivedOffers() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedOffer, setSelectedOffer] = useState<Offer | null>(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isRespondModalOpen, setIsRespondModalOpen] = useState(false);
   const { toast } = useToast();
   
   // Fetch properties owned by the user
@@ -97,8 +97,15 @@ export default function ReceivedOffers() {
           
           // Add offers to the collection with property information
           allOffersArray.push(...propertyOffers);
-        } catch (err) {
-          console.error(`Error fetching offers for property ${property.property_id}:`, err);
+        } catch (err: any) {
+          // Check if this is a 403 error (occurs when property ownership has changed)
+          if (err.response && err.response.status === 403) {
+            console.log(`Property ${property.property_id} is no longer owned by you. Refreshing properties list.`);
+            // Refresh the properties list to get the updated ownership information
+            getProperties();
+          } else {
+            console.error(`Error fetching offers for property ${property.property_id}:`, err);
+          }
           // Continue with the next property even if one fails
         }
       }
@@ -166,7 +173,7 @@ export default function ReceivedOffers() {
   const handleRespond = (offer: Offer) => {
     console.log("Responding to offer:", offer);
     setSelectedOffer(offer);
-    setIsModalOpen(true);
+    setIsRespondModalOpen(true);
   };
   
   // Handle successful offer response
@@ -299,6 +306,15 @@ export default function ReceivedOffers() {
                                   Respond
                                 </Button>
                               </div>
+                            ) : offer.status.toLowerCase() === 'accepted' ? (
+                              <Button 
+                                variant="outline" 
+                                size="sm"
+                                className="bg-green-50 text-green-700 border-green-200 hover:bg-green-100"
+                                onClick={() => handleRespond(offer)}
+                              >
+                                Execute Sale
+                              </Button>
                             ) : (
                               <span className="text-sm text-gray-500">No actions</span>
                             )}
@@ -314,14 +330,14 @@ export default function ReceivedOffers() {
         </Card>
       </div>
       
-      {/* Response Modal */}
+      {/* Respond to Offer Modal */}
       {selectedOffer && (
         <RespondToOfferModal
           offer={selectedOffer}
-          visible={isModalOpen}
-          onClose={() => setIsModalOpen(false)}
+          visible={isRespondModalOpen}
+          onClose={() => setIsRespondModalOpen(false)}
           onSuccess={handleOfferResponseSuccess}
-          propertyNftMint={getPropertyDetails(selectedOffer.property_id)?.nft_mint_address}
+          propertyNftMint={getPropertyDetails(selectedOffer.property_id)?.nft_mint}
         />
       )}
     </>

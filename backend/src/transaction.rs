@@ -1,4 +1,4 @@
-use actix_web::{web, HttpRequest, HttpResponse};
+use actix_web::{web, HttpRequest, HttpResponse, Responder};
 use base64::{engine::general_purpose, Engine};
 use bincode;
 use chrono::Utc;
@@ -8,7 +8,7 @@ use solana_client::rpc_client::RpcClient;
 use solana_sdk::{
     pubkey::Pubkey,
     signature::{Keypair, Signature},
-    transaction::{Transaction, VersionedTransaction},
+    transaction::Transaction as SolanaTransaction,
     hash::Hash,
     message::Message,
     instruction::Instruction,
@@ -177,7 +177,7 @@ pub async fn submit_transaction(
     };
 
     // Deserialize the transaction
-    let tx = match bincode::deserialize::<Transaction>(&tx_bytes) {
+    let tx = match bincode::deserialize::<SolanaTransaction>(&tx_bytes) {
         Ok(transaction) => transaction,
         Err(e) => return HttpResponse::BadRequest().body(format!("Failed to deserialize transaction: {}", e)),
     };
@@ -265,7 +265,7 @@ pub async fn submit_transaction_no_update(
     };
 
     // Deserialize the transaction
-    let tx = match bincode::deserialize::<Transaction>(&tx_bytes) {
+    let tx = match bincode::deserialize::<SolanaTransaction>(&tx_bytes) {
         Ok(transaction) => transaction,
         Err(e) => return HttpResponse::BadRequest().body(format!("Failed to deserialize transaction: {}", e)),
     };
@@ -359,7 +359,7 @@ pub async fn submit_instructions(
         
         // Vec<&dyn Signer> is the correct type for Transaction::new
         let signers = vec![&primary_signer as &dyn Signer];
-        let transaction = Transaction::new(&signers, message, blockhash);
+        let transaction = SolanaTransaction::new(&signers, message, blockhash);
         
         // Send and confirm the transaction
         let signature = rpc_client.send_and_confirm_transaction(&transaction)?;
@@ -416,6 +416,195 @@ pub async fn submit_instructions(
         Err(e) => {
             error!("Failed to insert property into database: {}", e);
             HttpResponse::InternalServerError().body(format!("Database error: {}", e))
+        }
+    }
+}
+
+// Define the Transaction struct for database interaction
+#[derive(Debug, Serialize, Deserialize, Queryable, Insertable)]
+#[diesel(table_name = crate::schema::transactions)]
+pub struct DbTransaction {
+    pub id: uuid::Uuid,
+    pub property_id: String,
+    pub seller_wallet: String,
+    pub buyer_wallet: String,
+    pub price: i64,
+    pub timestamp: chrono::NaiveDateTime,
+}
+
+// New request struct for recording a property sale
+#[derive(Debug, Deserialize)]
+pub struct RecordPropertySaleRequest {
+    pub property_id: String,
+    pub seller_wallet: String,
+    pub buyer_wallet: String,
+    pub price: i64,
+    pub transaction_signature: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PropertySaleResponse {
+    pub success: bool,
+    pub message: String,
+    pub transaction_id: Option<Uuid>,
+}
+
+/// Records a completed property sale transaction in the database
+pub async fn record_property_sale(
+    req: HttpRequest,
+    data: web::Json<RecordPropertySaleRequest>,
+) -> impl Responder {
+    // Verify authentication token
+    let wallet_address = match verify_token(&req).await {
+        Ok(wallet) => wallet,
+        Err(resp) => return resp,
+    };
+
+    // Check that the requester is either the buyer or seller
+    if wallet_address != data.buyer_wallet && wallet_address != data.seller_wallet {
+        return HttpResponse::Forbidden().body("Only the buyer or seller can record this transaction");
+    }
+
+    let mut conn = match db::establish_connection() {
+        Ok(conn) => conn,
+        Err(e) => {
+            error!("Failed to connect to database: {}", e);
+            return HttpResponse::InternalServerError().body("Database connection failed");
+        }
+    };
+
+    // Create new transaction record
+    let transaction_id = Uuid::new_v4();
+    let now = Utc::now().naive_utc();
+    
+    let new_transaction = DbTransaction {
+        id: transaction_id,
+        property_id: data.property_id.clone(),
+        seller_wallet: data.seller_wallet.clone(),
+        buyer_wallet: data.buyer_wallet.clone(),
+        price: data.price,
+        timestamp: now,
+    };
+
+    // Insert transaction into database
+    match diesel::insert_into(crate::schema::transactions::table)
+        .values(&new_transaction)
+        .execute(&mut conn)
+    {
+        Ok(_) => {
+            info!(
+                "Property sale recorded: {} sold to {}",
+                data.property_id, data.buyer_wallet
+            );
+            
+            // Update property ownership in the properties table
+            {
+                use crate::schema::properties::dsl::{properties, property_id as prop_id, owner_wallet, is_active, updated_at as prop_updated_at};
+                
+                match diesel::update(properties.filter(prop_id.eq(&data.property_id)))
+                    .set((
+                        owner_wallet.eq(&data.buyer_wallet),
+                        is_active.eq(false),
+                        prop_updated_at.eq(now),
+                    ))
+                    .execute(&mut conn)
+                {
+                    Ok(_) => {
+                        info!("Property ownership transferred to {}", data.buyer_wallet);
+                    },
+                    Err(e) => {
+                        error!("Failed to update property ownership: {}", e);
+                        // Continue anyway since the transaction was recorded
+                    }
+                }
+            }
+            
+            // Update the status of the accepted offer to 'completed'
+            {
+                use crate::schema::offers::dsl::{offers, property_id as offer_property_id, buyer_wallet as offer_buyer_wallet, status, updated_at as offer_updated_at};
+                
+                match diesel::update(offers.filter(
+                    offer_property_id.eq(&data.property_id)
+                        .and(offer_buyer_wallet.eq(&data.buyer_wallet))
+                        .and(status.eq("accepted"))
+                ))
+                    .set((
+                        status.eq("completed"),
+                        offer_updated_at.eq(now),
+                    ))
+                    .execute(&mut conn)
+                {
+                    Ok(_) => {
+                        info!("Offer status updated to completed");
+                    },
+                    Err(e) => {
+                        error!("Failed to update offer status: {}", e);
+                        // Continue anyway since the transaction was recorded
+                    }
+                }
+            }
+            
+            HttpResponse::Ok().json(PropertySaleResponse {
+                success: true,
+                message: "Property sale transaction recorded successfully".to_string(),
+                transaction_id: Some(transaction_id),
+            })
+        },
+        Err(e) => {
+            error!("Failed to record property sale: {}", e);
+            HttpResponse::InternalServerError().json(PropertySaleResponse {
+                success: false,
+                message: format!("Failed to record property sale: {}", e),
+                transaction_id: None,
+            })
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct TransactionsResponse {
+    pub success: bool,
+    pub message: String,
+    pub transactions: Vec<DbTransaction>,
+}
+
+/// Retrieves the transaction history
+pub async fn get_transactions(req: HttpRequest) -> impl Responder {
+    // Verify authentication token
+    let _wallet_address = match verify_token(&req).await {
+        Ok(wallet) => wallet,
+        Err(resp) => return resp,
+    };
+
+    let mut conn = match db::establish_connection() {
+        Ok(conn) => conn,
+        Err(e) => {
+            error!("Failed to connect to database: {}", e);
+            return HttpResponse::InternalServerError().body("Database connection failed");
+        }
+    };
+
+    // Fetch all transactions ordered by timestamp (most recent first)
+    let transactions_result = crate::schema::transactions::table
+        .order_by(crate::schema::transactions::timestamp.desc())
+        .load::<DbTransaction>(&mut conn);
+
+    match transactions_result {
+        Ok(transactions) => {
+            info!("Successfully retrieved {} transactions", transactions.len());
+            HttpResponse::Ok().json(TransactionsResponse {
+                success: true,
+                message: format!("Successfully retrieved {} transactions", transactions.len()),
+                transactions,
+            })
+        },
+        Err(e) => {
+            error!("Failed to fetch transactions: {}", e);
+            HttpResponse::InternalServerError().json(TransactionsResponse {
+                success: false,
+                message: format!("Failed to fetch transactions: {}", e),
+                transactions: vec![],
+            })
         }
     }
 } 

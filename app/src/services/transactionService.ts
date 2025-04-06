@@ -81,4 +81,66 @@ export const getRecentBlockhash = async (token: string) => {
     console.error('Error getting recent blockhash:', error);
     throw error;
   }
+};
+
+export const recordPropertySale = async (
+  propertyId: string,
+  sellerWallet: string,
+  buyerWallet: string,
+  price: number,
+  transactionSignature: string,
+  token: string
+) => {
+  try {
+    console.log(`Recording property sale for property ${propertyId}`);
+    console.log(`Seller: ${sellerWallet}`);
+    console.log(`Buyer: ${buyerWallet}`);
+    console.log(`Price: ${price}`);
+    console.log(`Transaction signature: ${transactionSignature}`);
+    
+    const response = await axios.post(
+      `${API_URL}/api/transactions/record-sale`,
+      {
+        property_id: propertyId,
+        seller_wallet: sellerWallet,
+        buyer_wallet: buyerWallet,
+        price: price,
+        transaction_signature: transactionSignature
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+      }
+    );
+    
+    console.log("Property sale recorded successfully:", response.data);
+    return response.data;
+  } catch (error) {
+    console.error('Error recording property sale:', error);
+    throw error;
+  }
+};
+
+export const getTransactionHistory = async (token: string) => {
+  try {
+    console.log("Fetching transaction history");
+    
+    const response = await axios.get(
+      `${API_URL}/api/transactions`,
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+      }
+    );
+    
+    console.log("Transaction history fetched:", response.data);
+    return response.data.transactions || [];
+  } catch (error) {
+    console.error('Error fetching transaction history:', error);
+    throw error;
+  }
 }; 

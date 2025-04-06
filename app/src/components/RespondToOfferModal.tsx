@@ -2,11 +2,13 @@ import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
-import { PublicKey, Transaction, LAMPORTS_PER_SOL, Connection } from '@solana/web3.js';
+import { PublicKey, Transaction, LAMPORTS_PER_SOL, Connection, SystemProgram } from '@solana/web3.js';
 import { BN } from '@project-serum/anchor';
 import { Offer } from "@/types/offer";
 import { respondToOffer } from "../services/offerService";
-import { submitTransactionNoUpdate, getRecentBlockhash } from "../services/transactionService";
+import { submitTransactionNoUpdate, getRecentBlockhash, recordPropertySale } from "../services/transactionService";
+import { useWallet } from "@/hooks/useWallet";
+import { useAuth } from "@/hooks/useAuth";
 
 // Define constants
 const MARKETPLACE_PROGRAM_ID = "BdSKkquiFKRqxbXYC3Jufz9K59xisZ33VNbyaigkStW6";
@@ -31,28 +33,38 @@ export default function RespondToOfferModal({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [simulationLogs, setSimulationLogs] = useState<string[]>([]);
   const [showLogs, setShowLogs] = useState(false);
+  const [offerAccepted, setOfferAccepted] = useState(false);
+  const [transactionSignature, setTransactionSignature] = useState<string | null>(null);
   const { toast } = useToast();
+  const { publicKey, signTransaction, connected } = useWallet();
+  const { token } = useAuth();
 
-  // Get auth token from localStorage
-  const getAuthToken = (): string => {
-    const token = localStorage.getItem('jwt_token');
-    if (token) {
-      return token;
+  // Determine if connected wallet is buyer or seller
+  const isBuyer = publicKey?.toString() === offer.buyer_wallet;
+  const isSeller = publicKey?.toString() !== offer.buyer_wallet;
+
+  // Reset state when modal is closed
+  useEffect(() => {
+    if (!visible) {
+      setErrors({});
+      setSimulationLogs([]);
+      setShowLogs(false);
+      setOfferAccepted(false);
+      setTransactionSignature(null);
     }
-    
-    // Try to get from session storage as fallback
-    const sessionToken = sessionStorage.getItem('jwt_token');
-    if (sessionToken) {
-      return sessionToken;
+  }, [visible]);
+
+  // Check if offer is accepted when component mounts or offer changes
+  useEffect(() => {
+    if (offer.status === "accepted") {
+      setOfferAccepted(true);
     }
-    
-    throw new Error("Authentication token not found. Please login again.");
-  };
+  }, [offer]);
 
   // Function to get a recent blockhash
-  const fetchRecentBlockhash = async (token: string) => {
+  const fetchRecentBlockhash = async () => {
     try {
-      const response = await getRecentBlockhash(token);
+      const response = await getRecentBlockhash();
       console.log("Got blockhash:", response.blockhash);
       return response.blockhash;
     } catch (error) {
@@ -99,6 +111,23 @@ export default function RespondToOfferModal({
     };
   };
 
+  // Create a SOL transfer instruction (simple payment from buyer to seller)
+  const createSolTransferInstruction = (
+    fromPubkey: PublicKey,
+    toPubkey: PublicKey,
+    lamports: number
+  ) => {
+    console.log(`Creating SOL transfer instruction of ${lamports / LAMPORTS_PER_SOL} SOL`);
+    console.log(`- From: ${fromPubkey.toString()}`);
+    console.log(`- To: ${toPubkey.toString()}`);
+    
+    return SystemProgram.transfer({
+      fromPubkey,
+      toPubkey,
+      lamports
+    });
+  };
+
   // Display simulation logs in the UI
   const displaySimulationLogs = (logs: string[]) => {
     setSimulationLogs(logs);
@@ -121,6 +150,7 @@ export default function RespondToOfferModal({
     await handleResponse(false);
   };
   
+  // Handle seller responding to an offer
   const handleResponse = async (accept: boolean) => {
     // Clear previous errors
     setErrors({});
@@ -129,8 +159,6 @@ export default function RespondToOfferModal({
     try {
       setIsSubmitting(true);
       
-      // Get auth token
-      const token = getAuthToken();
       if (!token) {
         setErrors({ auth: "You must be logged in to respond to offers" });
         toast({
@@ -141,58 +169,32 @@ export default function RespondToOfferModal({
         return;
       }
       
-      // Get Phantom provider
-      // @ts-ignore - Phantom global type
-      const phantomProvider = window.solana;
-      
-      if (!phantomProvider || !phantomProvider.isPhantom) {
-        setErrors({ wallet: "Phantom wallet is not installed. Please install Phantom wallet extension." });
+      if (!publicKey || !signTransaction) {
+        setErrors({ wallet: "Wallet not connected. Please connect your wallet to continue." });
         toast({
           title: "Wallet Error",
-          description: "Phantom wallet is not installed. Please install the Phantom wallet extension.",
+          description: "Wallet not connected. Please connect your wallet to continue.",
           variant: "destructive"
         });
-        setIsSubmitting(false);
         return;
       }
       
-      // Check if connected
-      if (!phantomProvider.isConnected) {
-        try {
-          console.log("Connecting to Phantom wallet...");
-          await phantomProvider.connect();
-          console.log("Connected to Phantom wallet");
-        } catch (connectError) {
-          console.error("Error connecting to Phantom:", connectError);
-          setErrors({ wallet: "Failed to connect to Phantom wallet. Please try again." });
-          toast({
-            title: "Wallet Error",
-            description: "Failed to connect to Phantom wallet. Please try again.",
-            variant: "destructive"
-          });
-          setIsSubmitting(false);
-          return;
-        }
-      }
-      
-      // Get wallet public key and convert to PublicKey object
-      const walletPublicKeyStr = phantomProvider.publicKey?.toString();
-      if (!walletPublicKeyStr) {
-        setErrors({ wallet: "Could not detect your wallet public key." });
+      // Make sure the connected wallet is the seller
+      if (!isSeller) {
+        setErrors({ wallet: "You must be the property seller to respond to this offer." });
         toast({
           title: "Wallet Error",
-          description: "Could not detect your wallet public key.",
+          description: "You must be the property seller to respond to this offer.",
           variant: "destructive"
         });
-        setIsSubmitting(false);
         return;
       }
       
-      const walletPublicKey = new PublicKey(walletPublicKeyStr);
-      console.log("Using wallet public key:", walletPublicKey.toString());
+      const walletPublicKeyStr = publicKey.toString();
+      console.log("Using wallet public key:", walletPublicKeyStr);
       
       // Get a fresh blockhash for the transaction
-      const blockhash = await fetchRecentBlockhash(token);
+      const blockhash = await fetchRecentBlockhash();
       
       // Create Solana connection for transaction simulation
       const connection = new Connection(SOLANA_RPC_ENDPOINT, "confirmed");
@@ -205,7 +207,7 @@ export default function RespondToOfferModal({
         programId
       );
       console.log("Marketplace PDA:", marketplacePDA.toString());
-      console.log("Current wallet owner:", walletPublicKey.toString());
+      console.log("Current wallet owner:", walletPublicKeyStr);
       console.log("Offer buyer wallet:", offer.buyer_wallet);
       
       // Find the property PDA
@@ -235,7 +237,7 @@ export default function RespondToOfferModal({
       console.log("Offer PDA:", offerPDA.toString());
       
       // Make sure we're not trying to accept our own offer
-      if (buyerWallet.equals(walletPublicKey)) {
+      if (buyerWallet.equals(publicKey)) {
         const errorMsg = "Cannot respond to your own offer. The owner and buyer wallets are the same.";
         console.error(errorMsg);
         setErrors({ transaction: errorMsg });
@@ -248,304 +250,464 @@ export default function RespondToOfferModal({
         return;
       }
       
-      // Create a transaction with the respond_to_offer instruction
-      const transaction = new Transaction();
-      transaction.recentBlockhash = blockhash;
-      transaction.feePayer = walletPublicKey;
+      // Create a new transaction
+      const transaction = new Transaction({
+        recentBlockhash: blockhash,
+        feePayer: publicKey
+      });
       
       // Add the respond_to_offer instruction
-      const respondInstruction = createRespondToOfferInstruction(
+      const respondToOfferInstruction = createRespondToOfferInstruction(
         programId,
         propertyPDA,
         offerPDA,
-        walletPublicKey,
+        publicKey,
         accept
       );
+      transaction.add(respondToOfferInstruction);
       
-      transaction.add(respondInstruction);
-      
-      // Simulate the transaction before signing
-      console.log("Simulating transaction before signing...");
+      // Try to simulate the transaction to catch any errors
       try {
-        const simulation = await connection.simulateTransaction(transaction);
+        console.log("Simulating transaction...");
+        const simulationResult = await connection.simulateTransaction(transaction);
         
-        // Process logs and display them
-        const extractedLogs: string[] = [];
-        let anchorErrorDetected = false;
-        
-        if (simulation.value.logs) {
-          console.log("=== SIMULATION LOGS ===");
-          simulation.value.logs.forEach((log, i) => {
-            console.log(`${i+1}: ${log}`);
-            
-            // Extract program logs
-            if (log.includes("Program log:")) {
-              const logMessage = log.split("Program log: ")[1];
-              extractedLogs.push(logMessage);
-            }
-            
-            // Check for specific Anchor errors
-            if (log.includes("AnchorError") && log.includes("AccountNotInitialized")) {
-              anchorErrorDetected = true;
-              extractedLogs.push("ERROR: Account Not Initialized. The offer account doesn't exist or is invalid.");
-            }
-          });
-          console.log("=== END SIMULATION LOGS ===");
-          
-          // Display logs in UI
-          displaySimulationLogs(extractedLogs);
-        }
-        
-        // Check if simulation was successful
-        if (simulation.value.err || anchorErrorDetected) {
-          console.error("Transaction simulation failed:", simulation.value.err);
-          
-          // Extract meaningful error message if possible
-          let errorMessage = "Transaction simulation failed.";
-          if (typeof simulation.value.err === 'object' && simulation.value.err !== null) {
-            const errJson = JSON.stringify(simulation.value.err);
-            console.error("Simulation error details:", errJson);
-            
-            if (errJson.includes("NotPropertyOwner")) {
-              errorMessage = "You are not the property owner.";
-            } else if (errJson.includes("OfferNotPending")) {
-              errorMessage = "This offer is not in a pending state.";
-            } else if (errJson.includes("OfferExpired")) {
-              errorMessage = "This offer has expired.";
-            } else if (errJson.includes("AccountNotInitialized")) {
-              errorMessage = "Offer account not found. It may have been already processed or doesn't exist.";
-            }
-          } else if (anchorErrorDetected) {
-            errorMessage = "Offer account not found. It may have been already processed or doesn't exist.";
-          }
-          
-          setErrors({ transaction: errorMessage });
+        // Check if the simulation was successful
+        if (simulationResult.value.err) {
+          console.error("Transaction simulation failed:", simulationResult.value.err);
+          setErrors({ simulation: `Transaction simulation failed: ${JSON.stringify(simulationResult.value.err)}` });
           toast({
-            title: "Transaction Error",
-            description: errorMessage,
+            title: "Simulation Error",
+            description: "Transaction simulation failed. Please check the logs for details.",
             variant: "destructive"
           });
-          
           setIsSubmitting(false);
           return;
         }
+        
+        // Display simulation logs for debugging
+        if (simulationResult.value.logs) {
+          console.log("Simulation logs:", simulationResult.value.logs);
+          displaySimulationLogs(simulationResult.value.logs);
+        }
       } catch (simulationError) {
         console.error("Error during transaction simulation:", simulationError);
-        const errorMessage = simulationError instanceof Error ? simulationError.message : 'Unknown simulation error';
-        
-        setErrors({ transaction: errorMessage });
+        setErrors({ simulation: `Simulation error: ${(simulationError as Error).message}` });
         toast({
-          title: "Simulation Error",
-          description: "Transaction simulation failed: " + errorMessage,
+          title: "Error",
+          description: "Error during transaction simulation. Please try again.",
           variant: "destructive"
         });
-        
         setIsSubmitting(false);
         return;
       }
       
-      // User confirmed to proceed, or simulation was successful
-      console.log("Transaction built, requesting signing from Phantom...");
-      
-      // Use Phantom's signTransaction
-      const signedTransaction = await phantomProvider.signTransaction(transaction);
-      console.log("Transaction signed successfully by Phantom");
-      
-      const serializedTransaction = signedTransaction.serialize();
-      console.log("Transaction serialized, size:", serializedTransaction.length, "bytes");
-      
-      // Submit the signed transaction to the backend
-      console.log("Submitting signed transaction to backend...");
-      
-      // Create metadata object for database
-      const metadataObj = {
-        offer_id: offer.id,
-        status: accept ? "accepted" : "rejected",
-        property_id: offer.property_id
-      };
-      
-      console.log("Transaction metadata:", JSON.stringify(metadataObj, null, 2));
-      
-      // Submit to the backend for processing
-      const result = await submitTransactionNoUpdate(
-        Buffer.from(serializedTransaction).toString('base64'),
-        token,
-        JSON.stringify(metadataObj)
-      );
-
-      console.log("Transaction submission result:", result);
-
-      if (result && result.signature) {
-        console.log("Transaction successful, updating offer status in database");
+      // Sign and submit the transaction
+      try {
+        // Sign the transaction
+        console.log("Signing transaction...");
+        const signedTransaction = await signTransaction(transaction);
         
-        // Update offer status in database
-        await respondToOffer(
+        // Show message while we process
+        toast({
+          title: "Signing Transaction",
+          description: "Please wait while we process your response..."
+        });
+        
+        // Encode the signed transaction
+        const encodedTransaction = Buffer.from(signedTransaction.serialize()).toString('base64');
+        
+        // Submit transaction to our backend without updating the backend state
+        // This will submit the transaction to the Solana network but not update our database yet
+        const submitResult = await submitTransactionNoUpdate(encodedTransaction, token);
+        
+        if (!submitResult.success) {
+          throw new Error(submitResult.message || "Transaction submission failed");
+        }
+        
+        console.log("Transaction submitted to Solana:", submitResult);
+        
+        // Now call the backend API to update the offer status
+        const offerResponse = await respondToOffer(
           offer.id,
-          accept ? "accepted" : "rejected",
-          result.signature,
+          accept,
+          submitResult.signature || "transaction-signature-placeholder",
           token
         );
         
+        console.log("Offer response API result:", offerResponse);
+        
+        if (!offerResponse.success) {
+          throw new Error(offerResponse.message || "Failed to update offer status");
+        }
+        
+        // Store signature for use in the next step
+        setTransactionSignature(submitResult.signature || null);
+        
+        toast({
+          title: accept ? "Offer Accepted" : "Offer Rejected",
+          description: accept 
+            ? "You have successfully accepted the offer! The buyer can now complete the purchase."
+            : "You have rejected the offer."
+        });
+        
+        // Set offer as accepted if we accepted it
+        if (accept) {
+          setOfferAccepted(true);
+        }
+        
+        // If we're rejecting, we're done
+        if (!accept) {
+          onSuccess();
+          onClose();
+        }
+        
+      } catch (signError) {
+        console.error("Error signing or submitting transaction:", signError);
+        setErrors({ transaction: `Transaction signing error: ${(signError as Error).message}` });
+        toast({
+          title: "Transaction Error",
+          description: "Failed to sign or submit the transaction. Please try again.",
+          variant: "destructive"
+        });
+        setIsSubmitting(false);
+        return;
+      }
+      
+    } catch (err) {
+      console.error("Error during offer response:", err);
+      setErrors({ unknown: `An unknown error occurred: ${(err as Error).message}` });
+      toast({
+        title: "Error",
+        description: "An error occurred while processing your request",
+        variant: "destructive"
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+  
+  // Execute property sale as buyer - real on-chain SOL transfer
+  const handleCompletePurchase = async () => {
+    try {
+      setIsSubmitting(true);
+      
+      if (!publicKey || !signTransaction || !token) {
+        toast({
+          title: "Error",
+          description: "Wallet not connected or not authenticated",
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      // Make sure the connected wallet is the buyer
+      if (!isBuyer) {
+        setErrors({ wallet: "You must be the buyer to complete this purchase." });
+        toast({
+          title: "Wallet Error",
+          description: "You must be the buyer to complete this purchase.",
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      // Make sure we have a seller wallet
+      if (!offer.seller_wallet) {
+        setErrors({ offer: "Missing seller wallet address. Cannot complete transaction." });
+        toast({
+          title: "Error", 
+          description: "Missing seller wallet address. Cannot complete transaction.",
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      // Prepare for SOL transfer
+      const sellerWallet = new PublicKey(offer.seller_wallet);
+      const buyerWallet = publicKey;
+      
+      // Get a fresh blockhash
+      const connection = new Connection(SOLANA_RPC_ENDPOINT);
+      const { blockhash } = await connection.getLatestBlockhash();
+      
+      // Create transaction
+      const transaction = new Transaction({
+        feePayer: buyerWallet,
+        blockhash,
+        lastValidBlockHeight: 1000000000, // Large value to avoid expiration during testing
+      });
+      
+      // Add SOL transfer instruction
+      const transferInstruction = createSolTransferInstruction(
+        buyerWallet,
+        sellerWallet,
+        offer.amount
+      );
+      
+      transaction.add(transferInstruction);
+      
+      // Simulate the transaction
+      try {
+        const simulation = await connection.simulateTransaction(transaction);
+        if (simulation.value.err) {
+          console.error("Transfer simulation failed:", simulation.value.err);
+          setErrors({ simulation: `Transfer simulation failed: ${JSON.stringify(simulation.value.err)}` });
+          toast({
+            title: "Simulation Error",
+            description: "Transaction simulation failed. You may not have enough SOL.",
+            variant: "destructive"
+          });
+          return;
+        }
+        
+        // Display logs if available
+        if (simulation.value.logs) {
+          displaySimulationLogs(simulation.value.logs);
+        }
+      } catch (simulationError) {
+        console.error("Error simulating transfer:", simulationError);
+        setErrors({ simulation: `Transfer simulation error: ${(simulationError as Error).message}` });
+        toast({
+          title: "Error",
+          description: "Error simulating transfer. Please try again.",
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      // Sign and send the transaction
+      const signedTx = await signTransaction(transaction);
+      
+      // Submit the signed transaction to Solana
+      const encodedTransaction = Buffer.from(signedTx.serialize()).toString('base64');
+      const submitResult = await submitTransactionNoUpdate(encodedTransaction, token);
+      
+      if (!submitResult.success) {
+        throw new Error(submitResult.message || "Transaction submission failed");
+      }
+      
+      const txSignature = submitResult.signature;
+      console.log("SOL transfer successful with signature:", txSignature);
+      
+      // Now record the sale in our database
+      const result = await recordPropertySale(
+        offer.property_id,
+        offer.seller_wallet,
+        publicKey.toString(),
+        offer.amount,
+        txSignature || "buyer-payment-signature",
+        token
+      );
+      
+      if (result && result.success) {
         toast({
           title: "Success",
-          description: `Offer ${accept ? 'accepted' : 'rejected'} with transaction signature: ${result.signature.substring(0, 12)}...`,
+          description: "Payment sent and property sale completed successfully!",
         });
         onSuccess();
         onClose();
       } else {
         toast({
           title: "Warning",
-          description: "Transaction completed but no signature was returned. Please check status later.",
+          description: "Payment sent but sale record may not have completed. Please check with the marketplace.",
           variant: "destructive"
         });
       }
-    } catch (error) {
-      console.error("Error responding to offer:", error);
       
-      // Check for authentication error
-      if (error instanceof Error) {
-        if (error.message.includes("401") || error.message.includes("Unauthorized")) {
-          setErrors({ auth: "Authentication failed. Please login again." });
-          toast({
-            title: "Authentication Error",
-            description: "Your session has expired. Please login again.",
-            variant: "destructive"
-          });
-        } else if (error.message.includes("User rejected")) {
-          setErrors({ wallet: "You declined to sign the transaction." });
-          toast({
-            title: "Transaction Rejected",
-            description: "You declined to sign the transaction.",
-            variant: "destructive"
-          });
-        } else {
-          setErrors({ form: error.message });
-          toast({
-            title: "Error",
-            description: `Failed to ${accept ? 'accept' : 'reject'} offer. Please try again.`,
-            variant: "destructive"
-          });
-        }
-      } else {
-        setErrors({ form: "An unknown error occurred" });
-        toast({
-          title: "Error",
-          description: `Failed to ${accept ? 'accept' : 'reject'} offer. Please try again.`,
-          variant: "destructive"
-        });
-      }
+    } catch (err) {
+      console.error("Error during purchase completion:", err);
+      toast({
+        title: "Error",
+        description: "Failed to complete the purchase. Please try again.",
+        variant: "destructive"
+      });
     } finally {
       setIsSubmitting(false);
     }
   };
-  
+
+  // Get appropriate title based on state and user role
+  const getModalTitle = () => {
+    if (isBuyer && offerAccepted) {
+      return "Complete Property Purchase";
+    } else if (isSeller && offerAccepted) {
+      return "Sale Ready for Buyer";
+    } else if (isSeller) {
+      return "Respond to Offer";
+    } else {
+      return "Offer Details";
+    }
+  };
+
+  // Get appropriate description based on state and user role
+  const getModalDescription = () => {
+    if (isBuyer && offerAccepted) {
+      return "Complete your purchase by sending the payment to the seller.";
+    } else if (isSeller && offerAccepted) {
+      return "The offer has been accepted. The buyer needs to complete the purchase.";
+    } else if (isSeller) {
+      return "Do you want to accept or reject this offer?";
+    } else {
+      return "You are viewing this offer as a third party.";
+    }
+  };
+
   return (
-    <Dialog open={visible} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-[425px] bg-white">
-        <DialogHeader className="border-b pb-4">
-          <DialogTitle className="text-xl font-bold">Respond to Offer</DialogTitle>
+    <Dialog open={visible} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-[600px]">
+        <DialogHeader>
+          <DialogTitle>
+            {getModalTitle()}
+          </DialogTitle>
           <DialogDescription>
-            Decide whether to accept or reject this offer
+            {getModalDescription()}
           </DialogDescription>
         </DialogHeader>
         
-        <div className="space-y-4 py-4">
-          {errors.form && (
-            <div className="bg-red-100 text-red-700 p-2 rounded-md text-sm">
-              {errors.form}
-            </div>
-          )}
-          
-          {errors.auth && (
-            <div className="bg-red-100 text-red-700 p-2 rounded-md text-sm">
-              {errors.auth}
-            </div>
-          )}
-          
-          {errors.wallet && (
-            <div className="bg-red-100 text-red-700 p-2 rounded-md text-sm">
-              {errors.wallet}
-            </div>
-          )}
-          
-          {errors.transaction && (
-            <div className="bg-red-100 text-red-700 p-2 rounded-md text-sm">
-              {errors.transaction}
-            </div>
-          )}
-          
-          <div className="border rounded-md p-4 mb-4">
-            <h3 className="font-medium mb-2">Offer Details</h3>
-            <div className="grid grid-cols-2 gap-2 text-sm">
+        <div className="space-y-4">
+          <div className="bg-gray-50 p-4 rounded-md">
+            <h3 className="text-sm font-medium text-gray-700">Offer Details</h3>
+            <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
               <div className="text-gray-500">Amount:</div>
-              <div className="font-medium">{(offer.amount / LAMPORTS_PER_SOL).toFixed(6)} SOL</div>
+              <div className="text-gray-900 font-medium">{(offer.amount / LAMPORTS_PER_SOL).toFixed(2)} SOL</div>
               
-              <div className="text-gray-500">From (Buyer):</div>
-              <div className="font-medium font-mono text-xs">{offer.buyer_wallet.substring(0, 6)}...{offer.buyer_wallet.substring(offer.buyer_wallet.length - 4)}</div>
+              <div className="text-gray-500">Buyer:</div>
+              <div className="text-gray-900 font-mono text-xs break-all">{offer.buyer_wallet}</div>
+              
+              <div className="text-gray-500">Seller:</div>
+              <div className="text-gray-900 font-mono text-xs break-all">{offer.seller_wallet || "<Unknown Seller>"}</div>
               
               <div className="text-gray-500">Property ID:</div>
-              <div className="font-medium">{offer.property_id}</div>
+              <div className="text-gray-900">{offer.property_id}</div>
               
-              <div className="text-gray-500">Created:</div>
-              <div className="font-medium">{new Date(offer.created_at).toLocaleString()}</div>
-              
-              <div className="text-gray-500">Expires:</div>
-              <div className="font-medium">{new Date(offer.expiration_time).toLocaleString()}</div>
+              <div className="text-gray-500">Status:</div>
+              <div className="text-gray-900">{offerAccepted ? "Accepted" : offer.status}</div>
             </div>
           </div>
           
-          {/* Simulation logs display */}
+          {connected && (
+            <div className="bg-green-50 p-4 rounded-md text-sm text-green-800">
+              <p className="font-medium">Connected Wallet:</p>
+              <p className="font-mono text-xs break-all mt-1">{publicKey?.toString()}</p>
+              <p className="mt-2">You are connected as the {isBuyer ? "buyer" : isSeller ? "seller" : "observer"}.</p>
+            </div>
+          )}
+          
+          {Object.keys(errors).length > 0 && (
+            <div className="bg-red-50 text-red-800 p-4 rounded-md text-sm">
+              {Object.values(errors).map((error, i) => (
+                <p key={i}>{error}</p>
+              ))}
+            </div>
+          )}
+          
+          {isBuyer && offerAccepted && (
+            <div className="bg-blue-50 text-blue-800 p-4 rounded-md text-sm">
+              <p><strong>Complete Your Purchase:</strong></p>
+              <p className="mt-2">
+                The seller has accepted your offer. Click "Pay Now" to send {(offer.amount / LAMPORTS_PER_SOL).toFixed(2)} SOL 
+                to the seller and complete the purchase.
+              </p>
+              <p className="mt-2 font-semibold">
+                This will trigger a real on-chain transaction from your wallet!
+              </p>
+            </div>
+          )}
+          
+          {isSeller && offerAccepted && (
+            <div className="bg-yellow-50 text-yellow-800 p-4 rounded-md text-sm">
+              <p><strong>Waiting for Buyer:</strong></p>
+              <p className="mt-2">
+                You've accepted this offer. Now the buyer needs to send the payment to complete the purchase.
+              </p>
+              <p className="mt-2">
+                The buyer should connect their wallet and click "Pay Now" to complete the transaction.
+              </p>
+            </div>
+          )}
+          
+          {!isBuyer && !isSeller && (
+            <div className="bg-yellow-50 text-yellow-800 p-4 rounded-md text-sm">
+              <p><strong>Invalid Wallet:</strong></p>
+              <p className="mt-2">
+                Your connected wallet is neither the buyer nor the seller for this transaction.
+              </p>
+            </div>
+          )}
+          
           {showLogs && simulationLogs.length > 0 && (
-            <div className="mt-4 p-3 bg-gray-50 border rounded-md">
+            <div className="bg-gray-100 p-4 rounded-md">
               <div className="flex justify-between items-center mb-2">
-                <h4 className="font-medium text-sm">Transaction Simulation Logs</h4>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
+                <h3 className="text-sm font-medium text-gray-700">Transaction Simulation Logs</h3>
+                <button
+                  type="button"
+                  className="text-xs text-blue-600 hover:text-blue-800"
                   onClick={clearSimulationLogs}
-                  className="text-xs h-6 py-0 px-2"
                 >
                   Clear
-                </Button>
+                </button>
               </div>
-              <div className="bg-black text-green-400 p-2 rounded-md font-mono text-xs overflow-auto max-h-32">
-                {simulationLogs.map((log, index) => (
-                  <div key={index} className={`text-xs mb-1 ${log.includes("ERROR:") ? 'text-red-400' : log.includes("WARNING:") ? 'text-yellow-400' : ''}`}>
-                    {log}
-                  </div>
+              <div className="max-h-[200px] overflow-auto text-xs">
+                {simulationLogs.map((log, i) => (
+                  <div key={i} className="mb-1 font-mono break-all text-gray-600">{log}</div>
                 ))}
               </div>
             </div>
           )}
           
-          <DialogFooter className="pt-4 border-t mt-6 flex justify-between">
-            <Button 
-              type="button" 
-              variant="destructive" 
-              onClick={handleReject} 
-              disabled={isSubmitting}
-              className="w-[45%]"
-            >
-              {isSubmitting ? (
-                <div className="flex items-center">
-                  <span className="animate-spin mr-2">⟳</span> Processing...
-                </div>
-              ) : "Reject Offer"}
-            </Button>
-            <Button 
-              type="button" 
-              onClick={handleAccept} 
-              disabled={isSubmitting}
-              className="w-[45%]"
-            >
-              {isSubmitting ? (
-                <div className="flex items-center">
-                  <span className="animate-spin mr-2">⟳</span> Processing...
-                </div>
-              ) : "Accept Offer"}
-            </Button>
-          </DialogFooter>
+          <div className="bg-blue-50 text-blue-800 p-4 rounded-md text-sm">
+            <p><strong>Test Flow Instructions:</strong></p>
+            <ol className="list-decimal pl-5 mt-2 space-y-1">
+              <li>Connect seller's wallet and accept the offer</li>
+              <li>Connect buyer's wallet in a different browser window</li>
+              <li>Navigate to the offer and click "Pay Now" to send real SOL on Devnet</li>
+            </ol>
+          </div>
         </div>
+        
+        <DialogFooter className="flex justify-between items-center">
+          <Button 
+            variant="outline" 
+            onClick={onClose}
+            disabled={isSubmitting}
+          >
+            Cancel
+          </Button>
+          
+          {isBuyer && offerAccepted ? (
+            <Button 
+              onClick={handleCompletePurchase}
+              disabled={isSubmitting}
+              className="bg-green-600 text-white hover:bg-green-700"
+            >
+              {isSubmitting ? "Processing..." : "Pay Now"}
+            </Button>
+          ) : isSeller && !offerAccepted ? (
+            <div className="flex gap-3">
+              <Button 
+                onClick={handleReject}
+                disabled={isSubmitting}
+                variant="destructive"
+              >
+                {isSubmitting ? "Processing..." : "Reject"}
+              </Button>
+              <Button 
+                onClick={handleAccept}
+                disabled={isSubmitting}
+                className="bg-green-600 text-white hover:bg-green-700"
+              >
+                {isSubmitting ? "Processing..." : "Accept"}
+              </Button>
+            </div>
+          ) : (
+            <Button 
+              disabled={true}
+              className="bg-gray-400 text-white"
+            >
+              {isSeller && offerAccepted ? "Waiting for Buyer" : "No Action Available"}
+            </Button>
+          )}
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

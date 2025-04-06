@@ -6,6 +6,7 @@ import { Offer } from "@/types/offer";
 import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { getPropertyOffers } from "@/services/offerService";
 import RespondToOfferModal from "./RespondToOfferModal";
+import ExecuteSaleModal from "./ExecuteSaleModal";
 
 interface PropertyOffersTableProps {
   propertyId: string;
@@ -16,7 +17,8 @@ export default function PropertyOffersTable({ propertyId, nftMint }: PropertyOff
   const [offers, setOffers] = useState<Offer[]>([]);
   const [selectedOffer, setSelectedOffer] = useState<Offer | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isRespondModalOpen, setIsRespondModalOpen] = useState(false);
+  const [isExecuteSaleModalOpen, setIsExecuteSaleModalOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
 
@@ -26,7 +28,7 @@ export default function PropertyOffersTable({ propertyId, nftMint }: PropertyOff
     
     try {
       // Get token from localStorage or sessionStorage
-      const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+      const token = localStorage.getItem('jwt_token') || sessionStorage.getItem('jwt_token');
       if (!token) {
         console.error("No auth token found");
         setError("Authentication required");
@@ -84,7 +86,14 @@ export default function PropertyOffersTable({ propertyId, nftMint }: PropertyOff
   const handleRespond = (offer: Offer) => {
     console.log("Responding to offer:", offer);
     setSelectedOffer(offer);
-    setIsModalOpen(true);
+    setIsRespondModalOpen(true);
+  };
+  
+  // Handle execute sale button click
+  const handleExecuteSale = (offer: Offer) => {
+    console.log("Executing sale for offer:", offer);
+    setSelectedOffer(offer);
+    setIsExecuteSaleModalOpen(true);
   };
   
   // Handle successful offer response
@@ -93,6 +102,15 @@ export default function PropertyOffersTable({ propertyId, nftMint }: PropertyOff
     toast({
       title: "Success",
       description: "Your response to the offer has been processed successfully",
+    });
+  };
+  
+  // Handle successful sale execution
+  const handleSaleExecutionSuccess = () => {
+    fetchOffers(); // Refresh offers list
+    toast({
+      title: "Success",
+      description: "The property sale has been completed successfully",
     });
   };
   
@@ -195,6 +213,16 @@ export default function PropertyOffersTable({ propertyId, nftMint }: PropertyOff
                       Respond
                     </Button>
                   )}
+                  {offer.status.toLowerCase() === 'accepted' && (
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      className="bg-green-50 text-green-700 border-green-200 hover:bg-green-100"
+                      onClick={() => handleExecuteSale(offer)}
+                    >
+                      Execute Sale
+                    </Button>
+                  )}
                 </TableCell>
               </TableRow>
             ))}
@@ -206,9 +234,20 @@ export default function PropertyOffersTable({ propertyId, nftMint }: PropertyOff
       {selectedOffer && (
         <RespondToOfferModal
           offer={selectedOffer}
-          visible={isModalOpen}
-          onClose={() => setIsModalOpen(false)}
+          visible={isRespondModalOpen}
+          onClose={() => setIsRespondModalOpen(false)}
           onSuccess={handleOfferResponseSuccess}
+          propertyNftMint={nftMint}
+        />
+      )}
+      
+      {/* Execute Sale Modal */}
+      {selectedOffer && nftMint && (
+        <ExecuteSaleModal
+          offer={selectedOffer}
+          visible={isExecuteSaleModalOpen}
+          onClose={() => setIsExecuteSaleModalOpen(false)}
+          onSuccess={handleSaleExecutionSuccess}
           propertyNftMint={nftMint}
         />
       )}
