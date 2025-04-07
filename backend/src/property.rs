@@ -73,6 +73,53 @@ pub async fn get_property(path: web::Path<String>) -> impl Responder {
     }
 }
 
+// Add a new response type just for NFT mint information
+#[derive(Serialize)]
+pub struct NftMintResponse {
+    pub property_id: String,
+    pub nft_mint_address: String,
+    pub owner_wallet: String,
+}
+
+/// Fetches just the NFT mint address for a property
+pub async fn get_property_nft_mint(path: web::Path<String>) -> impl Responder {
+    let property_id_param = path.into_inner();
+    
+    let mut conn = match db::establish_connection() {
+        Ok(conn) => conn,
+        Err(e) => {
+            error!("Failed to connect to database: {}", e);
+            return HttpResponse::InternalServerError().body("Database connection failed");
+        }
+    };
+
+    info!("Fetching NFT mint for property ID: {}", property_id_param);
+    
+    let result = properties
+        .filter(property_id.eq(property_id_param))
+        .select((property_id, nft_mint_address, owner_wallet))
+        .first::<(String, String, String)>(&mut conn);
+    
+    match result {
+        Ok((prop_id, mint, owner)) => {
+            info!("Successfully fetched NFT mint address");
+            HttpResponse::Ok().json(NftMintResponse {
+                property_id: prop_id,
+                nft_mint_address: mint,
+                owner_wallet: owner,
+            })
+        },
+        Err(diesel::result::Error::NotFound) => {
+            info!("Property not found");
+            HttpResponse::NotFound().body("Property not found")
+        },
+        Err(e) => {
+            error!("Failed to fetch property NFT mint: {}", e);
+            HttpResponse::InternalServerError().body(format!("Failed to fetch property NFT mint: {}", e))
+        }
+    }
+}
+
 #[derive(Deserialize)]
 pub struct UpdatePropertyRequest {
     pub metadata_uri: Option<String>,

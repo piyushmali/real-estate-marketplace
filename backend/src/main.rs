@@ -131,6 +131,7 @@ async fn main() -> std::io::Result<()> {
             .route("/api/properties", web::get().to(property::get_properties))
             .route("/api/properties/{property_id}", web::get().to(property::get_property))
             // New endpoints
+            .route("/api/properties/{property_id}/nft-mint", web::get().to(property::get_property_nft_mint))
             .route("/api/transactions/submit-no-update", web::post().to(transaction::submit_transaction_no_update))
             .route("/api/properties/{property_id}/update", web::patch().to(property::update_property))
             // Offer endpoints

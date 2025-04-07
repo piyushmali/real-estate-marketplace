@@ -8,6 +8,11 @@ import { useAuth } from "@/hooks/useAuth";
 import { Offer } from "@/types/offer";
 import { getUserOffers } from "@/services/offerService";
 import { Link } from "wouter";
+import ExecuteSaleModal from "@/components/ExecuteSaleModal";
+import { useProperties } from "@/context/PropertyContext";
+import axios from 'axios';
+
+const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://127.0.0.1:8080';
 
 // Helper function to format wallet addresses
 const formatWalletAddress = (address: string) => {
@@ -45,6 +50,11 @@ export default function MyOffers() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
+  const [selectedOffer, setSelectedOffer] = useState<Offer | null>(null);
+  const [isExecuteSaleModalOpen, setIsExecuteSaleModalOpen] = useState(false);
+  const [propertyNftMint, setPropertyNftMint] = useState<string>("");
+  // Get properties from useProperties hook
+  const { properties } = useProperties();
   
   const fetchOffers = async () => {
     setIsLoading(true);
@@ -85,6 +95,90 @@ export default function MyOffers() {
   // Handle refresh button click
   const handleRefresh = () => {
     fetchOffers();
+  };
+  
+  // Fetch NFT mint address for a specific property
+  const fetchPropertyNftMint = async (propertyId: string): Promise<string> => {
+    try {
+      if (!token) {
+        throw new Error("Authentication token is required");
+      }
+      
+      console.log(`Fetching NFT mint address for property: ${propertyId}`);
+      
+      const response = await axios.get(
+        `${API_URL}/api/properties/${propertyId}/nft-mint`,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          }
+        }
+      );
+      
+      if (response.status === 200 && response.data.nft_mint_address) {
+        console.log(`Got NFT mint address: ${response.data.nft_mint_address}`);
+        return response.data.nft_mint_address;
+      } else {
+        throw new Error("NFT mint address not found in response");
+      }
+    } catch (err) {
+      console.error("Error fetching NFT mint address:", err);
+      return "";
+    }
+  };
+  
+  // Handle execute sale button click
+  const handleExecuteSale = async (offer: Offer) => {
+    // First try to get NFT mint from properties context
+    const property = getPropertyDetails(offer.property_id);
+    let mintAddress = "";
+    
+    if (property && property.nft_mint) {
+      mintAddress = property.nft_mint.toString();
+    } else {
+      // If not found in context, try to fetch directly from backend
+      try {
+        mintAddress = await fetchPropertyNftMint(offer.property_id);
+      } catch (err) {
+        console.warn(`Error fetching NFT mint address: ${err.message}`);
+      }
+    }
+    
+    // If we still don't have a mint address, use fallback
+    if (!mintAddress) {
+      console.warn(`Property NFT mint not found for ${offer.property_id}. Using test NFT mint.`);
+      
+      // Use a valid Solana address format for testing
+      mintAddress = "11111111111111111111111111111111";
+      
+      toast({
+        title: "Test Mode",
+        description: "Using a test NFT mint address since property data is incomplete",
+      });
+    }
+    
+    setPropertyNftMint(mintAddress);
+    setSelectedOffer(offer);
+    setIsExecuteSaleModalOpen(true);
+  };
+  
+  // Handle successful sale execution
+  const handleSaleExecutionSuccess = () => {
+    fetchOffers(); // Refresh offers list
+    toast({
+      title: "Success",
+      description: "The property sale has been completed successfully"
+    });
+  };
+  
+  // Find property details for a given property ID
+  const getPropertyDetails = (propertyId: string) => {
+    const property = properties.find(p => p.property_id === propertyId);
+    if (!property) {
+      console.warn(`Property not found for ID: ${propertyId}`);
+    }
+    return property;
   };
   
   if (!isAuthenticated) {
@@ -177,15 +271,28 @@ export default function MyOffers() {
                         <TableCell>{formatDate(offer.created_at)}</TableCell>
                         <TableCell>{formatDate(offer.expiration_time)}</TableCell>
                         <TableCell className="text-right">
-                          <Link to={`/properties/${offer.property_id}`}>
-                            <Button 
-                              variant="ghost" 
-                              size="sm"
-                            >
-                              <ExternalLink className="h-4 w-4 mr-1" />
-                              View Property
-                            </Button>
-                          </Link>
+                          <div className="flex justify-end gap-2">
+                            <Link to={`/properties/${offer.property_id}`}>
+                              <Button 
+                                variant="ghost" 
+                                size="sm"
+                              >
+                                <ExternalLink className="h-4 w-4 mr-1" />
+                                View Property
+                              </Button>
+                            </Link>
+                            
+                            {offer.status.toLowerCase() === 'accepted' && (
+                              <Button 
+                                variant="outline" 
+                                size="sm"
+                                className="bg-green-50 text-green-700 border-green-200 hover:bg-green-100"
+                                onClick={() => handleExecuteSale(offer)}
+                              >
+                                Execute Sale
+                              </Button>
+                            )}
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -196,6 +303,17 @@ export default function MyOffers() {
           </CardContent>
         </Card>
       </div>
+      
+      {/* Execute Sale Modal */}
+      {selectedOffer && (
+        <ExecuteSaleModal
+          offer={selectedOffer}
+          visible={isExecuteSaleModalOpen}
+          onClose={() => setIsExecuteSaleModalOpen(false)}
+          onSuccess={handleSaleExecutionSuccess}
+          propertyNftMint={propertyNftMint}
+        />
+      )}
     </>
   );
 }
