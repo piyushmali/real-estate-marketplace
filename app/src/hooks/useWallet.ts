@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { PublicKey, Connection } from '@solana/web3.js';
+import { PublicKey, Connection, Transaction } from '@solana/web3.js';
 import { PhantomWalletAdapter } from '@solana/wallet-adapter-phantom';
 import { useAnchorWallet, useConnection, useWallet as useSolanaWallet } from '@solana/wallet-adapter-react';
 
@@ -7,7 +7,7 @@ import { useAnchorWallet, useConnection, useWallet as useSolanaWallet } from '@s
 const RPC_URL = import.meta.env.VITE_SOLANA_RPC_URL || 'https://api.devnet.solana.com';
 
 export function useWallet() {
-  const { publicKey, connected, connecting, disconnect, select, wallet, wallets } = useSolanaWallet();
+  const { publicKey, connected, connecting, disconnect, select, wallet, wallets, signTransaction } = useSolanaWallet();
   const connection = new Connection(RPC_URL, 'confirmed');
   const [balance, setBalance] = useState<number | null>(null);
   const [previousWallet, setPreviousWallet] = useState<string | null>(null);
@@ -82,6 +82,8 @@ export function useWallet() {
     connectWallet,
     disconnectWallet,
     needsAuthentication,
-    setAuthenticated
+    setAuthenticated,
+    signTransaction,
+    publicKeyObj: publicKey
   };
 } 

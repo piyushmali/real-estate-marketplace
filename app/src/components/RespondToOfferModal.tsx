@@ -6,7 +6,7 @@ import { PublicKey, Transaction, LAMPORTS_PER_SOL, Connection, SystemProgram } f
 import { BN } from '@project-serum/anchor';
 import { Offer } from "@/types/offer";
 import { respondToOffer } from "../services/offerService";
-import { submitTransactionNoUpdate, getRecentBlockhash, recordPropertySale } from "../services/transactionService";
+import { submitTransactionNoUpdate, getRecentBlockhash, recordPropertySale, simulateTransaction } from "../services/transactionService";
 import { useWallet } from "@/hooks/useWallet";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -36,15 +36,15 @@ export default function RespondToOfferModal({
   const [offerAccepted, setOfferAccepted] = useState(false);
   const [transactionSignature, setTransactionSignature] = useState<string | null>(null);
   const { toast } = useToast();
-  const { publicKey, signTransaction, connected } = useWallet();
+  const { publicKey, publicKeyObj, signTransaction, connected } = useWallet();
   const { token } = useAuth();
 
   // If seller_wallet is missing, use the current wallet as the seller
-  const effectiveSeller = offer.seller_wallet || (publicKey?.toString() || "");
+  const effectiveSeller = offer.seller_wallet || (publicKey || "");
 
   // Determine if connected wallet is buyer or seller
-  const isBuyer = publicKey?.toString() === offer.buyer_wallet;
-  const isSeller = publicKey?.toString() === effectiveSeller;
+  const isBuyer = publicKey === offer.buyer_wallet;
+  const isSeller = publicKey === effectiveSeller;
 
   // Reset state when modal is closed
   useEffect(() => {
@@ -67,7 +67,10 @@ export default function RespondToOfferModal({
   // Function to get a recent blockhash
   const fetchRecentBlockhash = async () => {
     try {
-      const response = await getRecentBlockhash();
+      if (!token) {
+        throw new Error("Authentication token is required to fetch blockhash");
+      }
+      const response = await getRecentBlockhash(token);
       console.log("Got blockhash:", response.blockhash);
       return response.blockhash;
     } catch (error) {
@@ -162,12 +165,11 @@ export default function RespondToOfferModal({
     try {
       setIsSubmitting(true);
       
-      if (!connected || !publicKey) {
+      if (!connected || !publicKeyObj) {
         setErrors({ wallet: "Wallet not connected. Please connect your wallet to continue." });
         toast({
           title: "Wallet Error",
-          description: "Wallet not connected. Please connect your wallet to continue.",
-          variant: "destructive"
+          description: "Wallet not connected. Please connect your wallet to continue."
         });
         return;
       }
@@ -176,8 +178,7 @@ export default function RespondToOfferModal({
         setErrors({ wallet: "Wallet doesn't support signing. Please use a compatible wallet." });
         toast({
           title: "Wallet Error",
-          description: "Wallet doesn't support signing. Please use a compatible wallet.",
-          variant: "destructive"
+          description: "Wallet doesn't support signing. Please use a compatible wallet."
         });
         return;
       }
@@ -186,8 +187,7 @@ export default function RespondToOfferModal({
         setErrors({ auth: "You must be logged in to respond to offers" });
         toast({
           title: "Authentication Error",
-          description: "You must be logged in to respond to offers",
-          variant: "destructive"
+          description: "You must be logged in to respond to offers"
         });
         return;
       }
@@ -197,13 +197,12 @@ export default function RespondToOfferModal({
         setErrors({ wallet: "You must be the property seller to respond to this offer." });
         toast({
           title: "Wallet Error",
-          description: "You must be the property seller to respond to this offer.",
-          variant: "destructive"
+          description: "You must be the property seller to respond to this offer."
         });
         return;
       }
       
-      const walletPublicKeyStr = publicKey.toString();
+      const walletPublicKeyStr = publicKey;
       console.log("Using wallet public key:", walletPublicKeyStr);
       
       // Update offer's seller wallet if it's currently unknown
@@ -256,14 +255,13 @@ export default function RespondToOfferModal({
       console.log("Offer PDA:", offerPDA.toString());
       
       // Make sure we're not trying to accept our own offer
-      if (buyerWallet.equals(publicKey)) {
+      if (buyerWallet.equals(publicKeyObj)) {
         const errorMsg = "Cannot respond to your own offer. The owner and buyer wallets are the same.";
         console.error(errorMsg);
         setErrors({ transaction: errorMsg });
         toast({
           title: "Error",
-          description: errorMsg,
-          variant: "destructive"
+          description: errorMsg
         });
         setIsSubmitting(false);
         return;
@@ -272,7 +270,7 @@ export default function RespondToOfferModal({
       // Create a new transaction
       const transaction = new Transaction({
         recentBlockhash: blockhash,
-        feePayer: publicKey
+        feePayer: publicKeyObj
       });
       
       // Add the respond_to_offer instruction
@@ -280,41 +278,44 @@ export default function RespondToOfferModal({
         programId,
         propertyPDA,
         offerPDA,
-        publicKey,
+        publicKeyObj,
         accept
       );
       transaction.add(respondToOfferInstruction);
       
-      // Try to simulate the transaction to catch any errors
+      // Simulate the transaction first to check for errors
       try {
-        console.log("Simulating transaction...");
+        console.log("Simulating transaction before signing...");
         const simulationResult = await connection.simulateTransaction(transaction);
         
-        // Check if the simulation was successful
         if (simulationResult.value.err) {
           console.error("Transaction simulation failed:", simulationResult.value.err);
+          
+          // Display logs from simulation for debugging
+          if (simulationResult.value.logs) {
+            console.log("Simulation logs:", simulationResult.value.logs);
+            displaySimulationLogs(simulationResult.value.logs);
+          }
+          
           setErrors({ simulation: `Transaction simulation failed: ${JSON.stringify(simulationResult.value.err)}` });
           toast({
             title: "Simulation Error",
-            description: "Transaction simulation failed. Please check the logs for details.",
-            variant: "destructive"
+            description: "Transaction would fail if submitted. See details in console."
           });
           setIsSubmitting(false);
           return;
         }
         
-        // Display simulation logs for debugging
+        console.log("Transaction simulation successful!");
         if (simulationResult.value.logs) {
           console.log("Simulation logs:", simulationResult.value.logs);
-          displaySimulationLogs(simulationResult.value.logs);
         }
       } catch (simulationError) {
         console.error("Error during transaction simulation:", simulationError);
         setErrors({ simulation: `Simulation error: ${(simulationError as Error).message}` });
         toast({
-          title: "Error",
-          description: "Error during transaction simulation. Please try again.",
-          variant: "destructive"
+          title: "Simulation Error",
+          description: `Failed to simulate transaction: ${(simulationError as Error).message}`
         });
         setIsSubmitting(false);
         return;
@@ -348,7 +349,7 @@ export default function RespondToOfferModal({
         // Now call the backend API to update the offer status
         const offerResponse = await respondToOffer(
           offer.id,
-          accept,
+          accept ? 'accepted' : 'rejected',
           submitResult.signature || "transaction-signature-placeholder",
           token
         );
@@ -385,8 +386,7 @@ export default function RespondToOfferModal({
         setErrors({ transaction: `Transaction signing error: ${(signError as Error).message}` });
         toast({
           title: "Transaction Error",
-          description: "Failed to sign or submit the transaction. Please try again.",
-          variant: "destructive"
+          description: "Failed to sign or submit the transaction. Please try again."
         });
         setIsSubmitting(false);
         return;
@@ -397,8 +397,7 @@ export default function RespondToOfferModal({
       setErrors({ unknown: `An unknown error occurred: ${(err as Error).message}` });
       toast({
         title: "Error",
-        description: "An error occurred while processing your request",
-        variant: "destructive"
+        description: "An error occurred while processing your request"
       });
     } finally {
       setIsSubmitting(false);
@@ -410,11 +409,10 @@ export default function RespondToOfferModal({
     try {
       setIsSubmitting(true);
       
-      if (!publicKey || !signTransaction || !token) {
+      if (!publicKeyObj || !signTransaction || !token) {
         toast({
           title: "Error",
-          description: "Wallet not connected or not authenticated",
-          variant: "destructive"
+          description: "Wallet not connected or not authenticated"
         });
         return;
       }
@@ -424,8 +422,7 @@ export default function RespondToOfferModal({
         setErrors({ wallet: "You must be the buyer to complete this purchase." });
         toast({
           title: "Wallet Error",
-          description: "You must be the buyer to complete this purchase.",
-          variant: "destructive"
+          description: "You must be the buyer to complete this purchase."
         });
         return;
       }
@@ -435,15 +432,14 @@ export default function RespondToOfferModal({
         setErrors({ offer: "Missing seller wallet address. Cannot complete transaction." });
         toast({
           title: "Error", 
-          description: "Missing seller wallet address. Cannot complete transaction.",
-          variant: "destructive"
+          description: "Missing seller wallet address. Cannot complete transaction."
         });
         return;
       }
       
       // Prepare for SOL transfer
       const sellerWallet = new PublicKey(offer.seller_wallet);
-      const buyerWallet = publicKey;
+      const buyerWallet = publicKeyObj;
       
       // Get a fresh blockhash
       const connection = new Connection(SOLANA_RPC_ENDPOINT);
@@ -462,7 +458,6 @@ export default function RespondToOfferModal({
         sellerWallet,
         offer.amount
       );
-      
       transaction.add(transferInstruction);
       
       // Simulate the transaction
@@ -473,8 +468,7 @@ export default function RespondToOfferModal({
           setErrors({ simulation: `Transfer simulation failed: ${JSON.stringify(simulation.value.err)}` });
           toast({
             title: "Simulation Error",
-            description: "Transaction simulation failed. You may not have enough SOL.",
-            variant: "destructive"
+            description: "Transaction simulation failed. You may not have enough SOL."
           });
           return;
         }
@@ -488,8 +482,7 @@ export default function RespondToOfferModal({
         setErrors({ simulation: `Transfer simulation error: ${(simulationError as Error).message}` });
         toast({
           title: "Error",
-          description: "Error simulating transfer. Please try again.",
-          variant: "destructive"
+          description: "Error simulating transfer. Please try again."
         });
         return;
       }
@@ -512,63 +505,56 @@ export default function RespondToOfferModal({
       const result = await recordPropertySale(
         offer.property_id,
         offer.seller_wallet,
-        publicKey.toString(),
+        publicKey,
         offer.amount,
         txSignature || "buyer-payment-signature",
         token
       );
       
-      if (result && result.success) {
+      if (result.success) {
         toast({
-          title: "Success",
-          description: "Payment sent and property sale completed successfully!",
+          title: "Purchase Complete",
+          description: "You have successfully purchased this property!",
         });
         onSuccess();
         onClose();
       } else {
         toast({
           title: "Warning",
-          description: "Payment sent but sale record may not have completed. Please check with the marketplace.",
-          variant: "destructive"
+          description: "Payment completed, but there was an issue recording the sale. Please contact support.",
         });
       }
       
     } catch (err) {
       console.error("Error during purchase completion:", err);
+      setErrors({ unknown: `An error occurred: ${(err as Error).message}` });
       toast({
         title: "Error",
-        description: "Failed to complete the purchase. Please try again.",
-        variant: "destructive"
+        description: "An error occurred during payment"
       });
     } finally {
       setIsSubmitting(false);
     }
   };
-
-  // Get appropriate title based on state and user role
+  
+  // Get modal title based on status
   const getModalTitle = () => {
-    if (isBuyer && offerAccepted) {
-      return "Complete Property Purchase";
-    } else if (isSeller && offerAccepted) {
-      return "Sale Ready for Buyer";
-    } else if (isSeller) {
-      return "Respond to Offer";
-    } else {
-      return "Offer Details";
+    if (offerAccepted) {
+      return isBuyer 
+        ? "Complete Purchase" 
+        : "Offer Accepted";
     }
+    return "Respond to Offer";
   };
-
-  // Get appropriate description based on state and user role
+  
+  // Get modal description based on status
   const getModalDescription = () => {
-    if (isBuyer && offerAccepted) {
-      return "Complete your purchase by sending the payment to the seller.";
-    } else if (isSeller && offerAccepted) {
-      return "The offer has been accepted. The buyer needs to complete the purchase.";
-    } else if (isSeller) {
-      return "Do you want to accept or reject this offer?";
-    } else {
-      return "You are viewing this offer as a third party.";
+    if (offerAccepted) {
+      return isBuyer
+        ? "Make the payment to complete your purchase" 
+        : "You have accepted this offer. Waiting for buyer to complete the purchase.";
     }
+    return "Review and respond to the offer for your property";
   };
 
   return (
@@ -596,7 +582,7 @@ export default function RespondToOfferModal({
                 <div className="text-gray-900 font-mono text-xs break-all">{offer.buyer_wallet}</div>
                 
                 <div className="text-gray-500">Seller:</div>
-                <div className="text-gray-900 font-mono text-xs break-all">{offer.seller_wallet || (connected ? publicKey?.toString() : "<Unknown Seller>")}</div>
+                <div className="text-gray-900 font-mono text-xs break-all">{offer.seller_wallet || (connected ? publicKey : "<Unknown Seller>")}</div>
                 
                 <div className="text-gray-500">Property ID:</div>
                 <div className="text-gray-900">{offer.property_id}</div>
@@ -606,10 +592,10 @@ export default function RespondToOfferModal({
               </div>
             </div>
             
-            {connected && publicKey && (
+            {connected && publicKeyObj && (
               <div className="bg-green-50 p-4 rounded-md text-sm text-green-800">
                 <p className="font-medium">Connected Wallet:</p>
-                <p className="font-mono text-xs break-all mt-1">{publicKey.toString()}</p>
+                <p className="font-mono text-xs break-all mt-1">{publicKey}</p>
                 <p className="mt-2">
                   You are connected as the {isBuyer ? "buyer" : isSeller ? "seller" : "observer"}.
                   {!isSeller && !isBuyer && " You cannot respond to this offer."}
@@ -617,7 +603,7 @@ export default function RespondToOfferModal({
               </div>
             )}
             
-            {(!connected || !publicKey) && (
+            {(!connected || !publicKeyObj) && (
               <div className="bg-red-50 p-4 rounded-md text-sm text-red-800">
                 <p className="font-medium">Wallet not connected.</p>
                 <p className="mt-1">Please connect your wallet to continue.</p>
@@ -653,33 +639,25 @@ export default function RespondToOfferModal({
             )}
             
             {showLogs && simulationLogs.length > 0 && (
-              <div className="bg-black rounded-md text-white p-4 text-xs font-mono">
-                <p className="font-bold mb-2">Transaction Simulation Logs:</p>
-                <div className="max-h-[200px] overflow-auto">
-                  {simulationLogs.map((log, i) => (
-                    <div key={i} className="mb-1">{log}</div>
-                  ))}
+              <div className="bg-gray-800 p-4 rounded-md text-xs text-gray-200 font-mono overflow-x-auto max-h-40 overflow-y-auto">
+                <div className="flex justify-between items-center mb-2">
+                  <h4 className="text-gray-400">Simulation Logs</h4>
+                  <Button 
+                    variant="ghost" 
+                    size="sm"
+                    className="h-6 text-xs text-gray-400 hover:text-white"
+                    onClick={clearSimulationLogs}
+                  >
+                    Clear
+                  </Button>
                 </div>
+                {simulationLogs.map((log, i) => (
+                  <div key={i} className="py-0.5">
+                    {log}
+                  </div>
+                ))}
               </div>
             )}
-            
-            {offerAccepted && (
-              <div className="bg-blue-50 p-4 rounded-md text-sm text-blue-800">
-                <p className="font-bold">Next Steps:</p>
-                <p className="mt-1">
-                  This offer has been accepted. The buyer can now complete the purchase transaction.
-                </p>
-              </div>
-            )}
-            
-            <div className="bg-yellow-50 p-4 rounded-md text-sm text-yellow-800">
-              <p className="font-bold">Test Flow Instructions:</p>
-              <ol className="list-decimal ml-5 mt-2 space-y-1">
-                <li>Connect seller's wallet and accept the offer</li>
-                <li>Connect buyer's wallet in a different browser window</li>
-                <li>Navigate to the offer and click "Pay Now" to send real SOL on Devnet</li>
-              </ol>
-            </div>
           </div>
           
           <DialogFooter className="mt-6 flex justify-end gap-2">
@@ -691,7 +669,7 @@ export default function RespondToOfferModal({
               Cancel
             </Button>
             
-            {!offerAccepted && isSeller && connected && publicKey && (
+            {!offerAccepted && isSeller && connected && publicKeyObj && (
               <>
                 <Button
                   variant="destructive"
@@ -711,7 +689,7 @@ export default function RespondToOfferModal({
               </>
             )}
             
-            {offerAccepted && isBuyer && connected && publicKey && (
+            {offerAccepted && isBuyer && connected && publicKeyObj && (
               <Button
                 onClick={handleCompletePurchase}
                 disabled={isSubmitting}
