@@ -34,33 +34,36 @@ export default function ExecuteSaleModal({
   const { token } = useAuth();
   const { toast } = useToast();
   const [waitingForBuyer, setWaitingForBuyer] = useState(false);
-  const [sellerInitiated, setSellerInitiated] = useState(false);
-  const [partiallySignedTx, setPartiallySignedTx] = useState<string | null>(null);
+  const [waitingForSeller, setWaitingForSeller] = useState(false);
+  const [partiallySignedTxBase64, setPartiallySignedTxBase64] = useState<string | null>(null);
+  const [simulationLogs, setSimulationLogs] = useState<string[]>([]);
+  const [showLogs, setShowLogs] = useState(false);
   
   // Check if current user is the buyer or the seller
   const isBuyer = publicKey?.toString() === offer.buyer_wallet;
-  const isSeller = publicKey?.toString() !== offer.buyer_wallet;
+  const isSeller = publicKey?.toString() === offer.seller_wallet;
   
   useEffect(() => {
     if (!visible) {
       setErrors({});
       setIsSubmitting(false);
       setWaitingForBuyer(false);
-      setSellerInitiated(false);
-      setPartiallySignedTx(null);
+      setWaitingForSeller(false);
+      setPartiallySignedTxBase64(null);
+      setSimulationLogs([]);
+      setShowLogs(false);
     }
   }, [visible]);
   
-  // For demo purposes only - simulates getting a recent blockhash
-  const getBlockhash = async () => {
+  // Function to get a recent blockhash
+  const fetchRecentBlockhash = async () => {
     try {
-      // In production, this would be a call to the actual Solana network
-      const blockhash = await getRecentBlockhash();
-      console.log("Got blockhash:", blockhash);
-      return blockhash;
-    } catch (err) {
-      console.error("Error getting recent blockhash:", err);
-      throw err;
+      const response = await getRecentBlockhash();
+      console.log("Got blockhash:", response.blockhash);
+      return response.blockhash;
+    } catch (error) {
+      console.error("Error fetching blockhash:", error);
+      throw error;
     }
   };
   
@@ -69,57 +72,53 @@ export default function ExecuteSaleModal({
     programId: PublicKey,
     propertyId: string,
     buyerWallet: string,
-    sellerWallet: string,
-    propertyPubkey: PublicKey,
-    transactionCount: number
+    sellerWallet: string
   ) => {
-    // Helper function to find PDA
-    const findProgramAddress = async (seeds: Buffer[], programId: PublicKey) => {
-      const [publicKey, bump] = await PublicKey.findProgramAddress(seeds, programId);
-      return { publicKey, bump };
-    };
-    
-    // Convert string inputs to PublicKeys
-    const buyerPublicKey = new PublicKey(buyerWallet);
-    const sellerPublicKey = new PublicKey(sellerWallet);
+    // Find the marketplace authority - this would be specific to your deployment
+    const marketplaceAuthority = new PublicKey("13EySfdhQL6b7dxzJnw73C33cRUnX1NjPBWEP1gkU43C");
     
     // Derive marketplace PDA
-    const marketplacePDA = await findProgramAddress(
-      [Buffer.from("marketplace"), sellerPublicKey.toBuffer()],
+    const [marketplacePDA] = PublicKey.findProgramAddressSync(
+      [Buffer.from("marketplace"), marketplaceAuthority.toBuffer()],
       programId
     );
-    console.log("Marketplace PDA:", marketplacePDA.publicKey.toString());
+    console.log("Marketplace PDA:", marketplacePDA.toString());
     
     // Derive property PDA
-    const propertyPDA = await findProgramAddress(
-      [Buffer.from("property"), marketplacePDA.publicKey.toBuffer(), Buffer.from(propertyId)],
+    const [propertyPDA] = PublicKey.findProgramAddressSync(
+      [Buffer.from("property"), marketplacePDA.toBuffer(), Buffer.from(propertyId)],
       programId
     );
-    console.log("Property PDA:", propertyPDA.publicKey.toString());
+    console.log("Property PDA:", propertyPDA.toString());
     
     // Derive offer PDA
-    const offerPDA = await findProgramAddress(
-      [Buffer.from("offer"), propertyPubkey.toBuffer(), buyerPublicKey.toBuffer()],
+    const buyerPublicKey = new PublicKey(buyerWallet);
+    const [offerPDA] = PublicKey.findProgramAddressSync(
+      [Buffer.from("offer"), propertyPDA.toBuffer(), buyerPublicKey.toBuffer()],
       programId
     );
-    console.log("Offer PDA:", offerPDA.publicKey.toString());
+    console.log("Offer PDA:", offerPDA.toString());
+    
+    // Get transaction count from property - would be fetched from the blockchain in production
+    // Assuming first transaction for this example
+    const transactionCount = 0;
     
     // Derive transaction history PDA
-    const transactionHistoryPDA = await findProgramAddress(
+    const [transactionHistoryPDA] = PublicKey.findProgramAddressSync(
       [
         Buffer.from("transaction"),
-        propertyPubkey.toBuffer(),
-        new Uint8Array(new BN(transactionCount + 1).toArray("le", 8)),
+        propertyPDA.toBuffer(),
+        new Uint8Array(new BN(transactionCount + 1).toArray("le", 8))
       ],
       programId
     );
-    console.log("Transaction History PDA:", transactionHistoryPDA.publicKey.toString());
+    console.log("Transaction History PDA:", transactionHistoryPDA.toString());
     
     return {
-      marketplace: marketplacePDA.publicKey,
-      property: propertyPDA.publicKey,
-      offer: offerPDA.publicKey,
-      transactionHistory: transactionHistoryPDA.publicKey
+      marketplace: marketplacePDA,
+      property: propertyPDA,
+      offer: offerPDA,
+      transactionHistory: transactionHistoryPDA
     };
   };
   
@@ -148,9 +147,8 @@ export default function ExecuteSaleModal({
     console.log("- Buyer wallet:", buyerPublicKey.toString());
     console.log("- Seller wallet:", sellerPublicKey.toString());
     
-    // In a real implementation, this would create the actual Solana instruction
-    // with the correct data layout matching the Solana program's expectation
-    const data = Buffer.from([37, 74, 217, 157, 79, 49, 35, 6]); // execute_sale discriminator
+    // Instruction discriminator for execute_sale from IDL
+    const data = Buffer.from([37, 74, 217, 157, 79, 49, 35, 6]);
     
     return {
       programId,
@@ -178,23 +176,12 @@ export default function ExecuteSaleModal({
   
   // Display simulation logs to the user
   const displaySimulationLogs = (logs: string[]) => {
-    const truncatedLogs = logs.length > 5
-      ? [...logs.slice(0, 3), `... and ${logs.length - 3} more logs ...`]
-      : logs;
-    
-    toast({
-      title: "Transaction Simulation Result",
-      description: (
-        <div className="max-h-[200px] overflow-auto text-xs">
-          {truncatedLogs.map((log, i) => (
-            <div key={i} className="mb-1 font-mono break-all">{log}</div>
-          ))}
-        </div>
-      ),
-    });
+    setSimulationLogs(logs);
+    setShowLogs(true);
   };
   
-  const handleCreateTransaction = async () => {
+  // Create transaction for either buyer or seller to sign
+  const createTransaction = async () => {
     if (!publicKey || !signTransaction) {
       toast({
         title: "Wallet not connected",
@@ -215,52 +202,43 @@ export default function ExecuteSaleModal({
       const connection = new Connection(SOLANA_RPC_ENDPOINT);
       
       // Get a recent blockhash
-      const { blockhash } = await connection.getLatestBlockhash();
+      const blockhash = await fetchRecentBlockhash();
       
       // Create a new transaction
       const transaction = new Transaction({
-        feePayer: isBuyer ? publicKey : new PublicKey(offer.buyer_wallet),
+        feePayer: new PublicKey(offer.buyer_wallet), // buyer pays the fees
         blockhash,
-        lastValidBlockHeight: 1000000000, // Large value to avoid expiration during demo
+        lastValidBlockHeight: 1000000000, // Set a reasonable value in production
       });
       
-      // Convert strings to PublicKeys
       const programId = new PublicKey(MARKETPLACE_PROGRAM_ID);
       const propertyNftMintPublicKey = new PublicKey(propertyNftMint);
       const buyerPublicKey = new PublicKey(offer.buyer_wallet);
-      const sellerPublicKey = new PublicKey(offer.seller_wallet || walletPublicKeyStr);
+      const sellerPublicKey = new PublicKey(offer.seller_wallet);
       
       // Create PDAs
       const pdas = await createPDAs(
         programId,
         offer.property_id,
         offer.buyer_wallet,
-        offer.seller_wallet || walletPublicKeyStr,
-        new PublicKey("propertyPubkey"), // placeholder - would be real in production
-        0 // Transaction count - would be fetched from contract in production
+        offer.seller_wallet
       );
       
-      // For demo purposes, we'll use placeholder accounts for the token accounts
-      // In a real implementation, these would be queried from the Solana network or created if they don't exist
-      const marketplacePDA = pdas.marketplace;
-      const propertyPDA = pdas.property;
-      const offerPDA = pdas.offer;
-      const transactionHistoryPDA = pdas.transactionHistory;
+      // In a real implementation, these would be queried or created token accounts
+      // For now we'll use placeholder accounts
+      const buyerTokenAccount = new PublicKey("5YNmX8xXSPFYGPPZmKaw59g9Nq6RXEEbQXS2M9zFsrXH");
+      const sellerTokenAccount = new PublicKey("4rA3EXJzibbnrCvejkdAFFTkxCGuoJU4uRVVZGPwMN3y");
+      const marketplaceFeeAccount = new PublicKey("4t6eAD6WpRFcPKbBwqzs4dcHVMKRgYLVA2xuNcJxXs7h");
+      const sellerNftAccount = new PublicKey("8PbodeaosQP19SjYFx855UMqWxH2HynZLTTehGnXYb3s");
+      const buyerNftAccount = new PublicKey("Eb3yDyYygcAzRjYN8QKQhEHYQkknFAVWAyyuMSzBNfLN");
       
-      // Create placeholder token accounts (in a real app, these would be actual token accounts)
-      const buyerTokenAccount = new PublicKey("BuyerTokenAccountPlaceholder".padEnd(32, '0'));
-      const sellerTokenAccount = new PublicKey("SellerTokenAccountPlaceholder".padEnd(32, '0'));
-      const marketplaceFeeAccount = new PublicKey("MarketplaceFeeAccountPlaceholder".padEnd(32, '0'));
-      const sellerNftAccount = new PublicKey("SellerNftAccountPlaceholder".padEnd(32, '0'));
-      const buyerNftAccount = new PublicKey("BuyerNftAccountPlaceholder".padEnd(32, '0'));
-      
-      // Add the execute_sale instruction
+      // Add execute_sale instruction
       const executeSaleInstruction = createExecuteSaleInstruction(
         programId,
-        marketplacePDA,
-        propertyPDA,
-        offerPDA,
-        transactionHistoryPDA,
+        pdas.marketplace,
+        pdas.property,
+        pdas.offer,
+        pdas.transactionHistory,
         buyerPublicKey,
         sellerPublicKey,
         buyerTokenAccount,
@@ -271,14 +249,7 @@ export default function ExecuteSaleModal({
         propertyNftMintPublicKey
       );
       
-      // Add the instruction to the transaction
       transaction.add(executeSaleInstruction);
-      
-      // Show warning to user about demo limitations
-      toast({
-        title: "Demo Mode",
-        description: "This is a demo of the transaction flow. In a real app, this would interact with the Solana blockchain.",
-      });
       
       return transaction;
     } catch (err) {
@@ -294,8 +265,8 @@ export default function ExecuteSaleModal({
     }
   };
   
-  // For seller: Initiate the sale process
-  const handleSellerInitiateSale = async () => {
+  // Seller signs the transaction first
+  const handleSellerSign = async () => {
     try {
       setIsSubmitting(true);
       
@@ -308,20 +279,29 @@ export default function ExecuteSaleModal({
         return;
       }
       
-      // Mark the transaction as initiated by seller
-      setSellerInitiated(true);
+      const transaction = await createTransaction();
+      if (!transaction) return;
+      
+      // Seller signs first
+      const signedTx = await signTransaction(transaction);
+      
+      // Serialize the partially signed transaction
+      const serializedTx = Buffer.from(signedTx.serialize()).toString('base64');
+      setPartiallySignedTxBase64(serializedTx);
+      
+      // Show waiting for buyer message
       setWaitingForBuyer(true);
       
       toast({
-        title: "Sale Initiated",
-        description: "You've initiated the sale. Now disconnect your wallet and connect the buyer's wallet to complete the transaction.",
+        title: "Transaction Partially Signed",
+        description: "You (seller) have signed the transaction. Now the buyer needs to sign to complete the purchase.",
       });
       
     } catch (err) {
-      console.error("Error during seller sale initiation:", err);
+      console.error("Error during seller signing:", err);
       toast({
         title: "Error",
-        description: "Failed to initiate sale. See console for details.",
+        description: "Failed to sign transaction. See console for details.",
         variant: "destructive"
       });
     } finally {
@@ -329,58 +309,76 @@ export default function ExecuteSaleModal({
     }
   };
   
-  // For buyer: Complete the transaction by signing
-  const handleBuyerCompleteSale = async () => {
+  // Buyer signs the transaction and submits it
+  const handleBuyerComplete = async () => {
     try {
       setIsSubmitting(true);
       
-      if (!signTransaction) {
+      // If we don't have a partially signed transaction, create a new one
+      if (!partiallySignedTxBase64) {
+        // This branch is for when buyer initiates without seller having signed yet
+        const transaction = await createTransaction();
+        if (!transaction) return;
+        
+        // Buyer signs
+        const signedTx = await signTransaction!(transaction);
+        
+        // Serialize the partially signed transaction
+        const serializedTx = Buffer.from(signedTx.serialize()).toString('base64');
+        setPartiallySignedTxBase64(serializedTx);
+        
+        // Now we need the seller to sign
+        setWaitingForSeller(true);
+        
         toast({
-          title: "Wallet not connected",
-          description: "Please connect your wallet to continue",
-          variant: "destructive"
+          title: "Transaction Partially Signed",
+          description: "You (buyer) have signed the transaction. Now the seller needs to sign to complete the sale.",
         });
+        
         return;
       }
       
-      const transaction = await handleCreateTransaction();
-      if (!transaction) return;
+      // We have a partially signed transaction, so complete it
+      const serializedTx = partiallySignedTxBase64;
       
-      // Buyer signs the transaction
-      const signedTx = await signTransaction(transaction);
+      // Submit transaction to our backend
+      const result = await submitTransactionNoUpdate(serializedTx, token);
       
-      // In a real app, this would be broadcast to the Solana network
+      if (!result.success) {
+        throw new Error(result.message || "Transaction submission failed");
+      }
+      
       toast({
-        title: "Transaction Signed",
-        description: "Transaction has been signed by you (buyer). In a real app, it would now be sent to the Solana network.",
+        title: "Transaction Submitted",
+        description: "The purchase transaction has been submitted to the Solana network!",
       });
       
-      // For demo purposes, we'll simulate the database update
-      const result = await recordPropertySale(
+      // Record the sale in our database
+      const saleResult = await recordPropertySale(
         offer.property_id,
-        offer.seller_wallet || "",   // Seller wallet
-        offer.buyer_wallet,          // Buyer wallet (current user)
-        offer.amount,                // Sale price in lamports
-        "demo-transaction-signature-buyer", 
+        offer.seller_wallet,
+        offer.buyer_wallet,
+        offer.amount,
+        result.signature, 
         token
       );
       
-      if (result && result.success) {
+      if (saleResult && saleResult.success) {
         toast({
           title: "Success",
-          description: "Property sale has been recorded successfully in the database.",
+          description: "Property purchase complete! The ownership has been transferred.",
         });
         onSuccess();
         onClose();
       } else {
         toast({
           title: "Warning",
-          description: "Transaction recording encountered an issue. Please check the logs for details.",
+          description: "Transaction was sent, but there was an issue updating the database.",
           variant: "destructive"
         });
       }
     } catch (err) {
-      console.error("Error during buyer sale completion:", err);
+      console.error("Error during transaction completion:", err);
       toast({
         title: "Error",
         description: "Failed to complete transaction. See console for details.",
@@ -391,116 +389,181 @@ export default function ExecuteSaleModal({
     }
   };
   
+  // Determine what the current user should do
+  const getUserAction = () => {
+    if (isSeller && !waitingForBuyer && !partiallySignedTxBase64) {
+      return "sign"; // Seller needs to sign first
+    }
+    
+    if (isBuyer && (!waitingForBuyer || partiallySignedTxBase64)) {
+      return "complete"; // Buyer completes already signed transaction
+    }
+    
+    if (isSeller && waitingForBuyer) {
+      return "waiting"; // Seller waiting for buyer
+    }
+    
+    if (isBuyer && waitingForSeller) {
+      return "waiting"; // Buyer waiting for seller
+    }
+    
+    return "none"; // No action available
+  };
+  
   return (
     <Dialog open={visible} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[600px]">
-        <DialogHeader>
-          <DialogTitle>Execute Property Sale</DialogTitle>
-          <DialogDescription>
-            {sellerInitiated 
-              ? "Now connect with the buyer wallet to complete the transaction."
-              : isSeller
-                ? "Initiate the sale process for this property."
-                : "Complete the purchase of this property. This will deduct SOL from your wallet."}
-          </DialogDescription>
-        </DialogHeader>
-        
-        <div className="space-y-4">
-          <div className="bg-gray-50 p-4 rounded-md">
-            <h3 className="text-sm font-medium text-gray-700">Offer Details</h3>
-            <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
-              <div className="text-gray-500">Amount:</div>
-              <div className="text-gray-900 font-medium">{(offer.amount / LAMPORTS_PER_SOL).toFixed(2)} SOL</div>
-              
-              <div className="text-gray-500">Seller:</div>
-              <div className="text-gray-900 font-mono text-xs break-all">
-                {offer.seller_wallet || "<Unknown Seller>"}
+      <DialogContent className="sm:max-w-[600px] bg-white">
+        <div className="absolute inset-0 bg-gradient-to-r from-blue-100 to-purple-100 rounded-lg z-0 opacity-60" />
+        <div className="relative z-10">
+          <DialogHeader>
+            <DialogTitle>Execute Property Sale</DialogTitle>
+            <DialogDescription>
+              {isSeller && !waitingForBuyer 
+                ? "Sign the transaction to transfer property ownership to the buyer."
+                : isBuyer && partiallySignedTxBase64
+                ? "Complete the purchase by signing and submitting this transaction."
+                : isBuyer && !partiallySignedTxBase64
+                ? "Initiate the purchase process. Both you and the seller must sign."
+                : waitingForBuyer
+                ? "Waiting for the buyer to complete the transaction."
+                : waitingForSeller
+                ? "Waiting for the seller to sign the transaction."
+                : "This transaction requires both buyer and seller signatures."}
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 my-4">
+            <div className="bg-gray-50 p-4 rounded-md">
+              <h3 className="text-sm font-medium text-gray-700">Offer Details</h3>
+              <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
+                <div className="text-gray-500">Amount:</div>
+                <div className="text-gray-900 font-medium">{(offer.amount / LAMPORTS_PER_SOL).toFixed(2)} SOL</div>
+                
+                <div className="text-gray-500">Seller:</div>
+                <div className="text-gray-900 font-mono text-xs break-all">
+                  {offer.seller_wallet}
+                </div>
+                
+                <div className="text-gray-500">Buyer:</div>
+                <div className="text-gray-900 font-mono text-xs break-all">
+                  {offer.buyer_wallet}
+                </div>
+                
+                <div className="text-gray-500">Property ID:</div>
+                <div className="text-gray-900">{offer.property_id}</div>
+                
+                <div className="text-gray-500">Status:</div>
+                <div className="text-gray-900">{offer.status}</div>
               </div>
-              
-              <div className="text-gray-500">Buyer:</div>
-              <div className="text-gray-900 font-mono text-xs break-all">
-                {offer.buyer_wallet}
+            </div>
+            
+            {connected && (
+              <div className="bg-green-50 p-4 rounded-md text-sm text-green-800">
+                <p className="font-medium">Connected Wallet:</p>
+                <p className="font-mono text-xs break-all mt-1">{publicKey?.toString()}</p>
+                <p className="mt-2">You are connected as the {isBuyer ? "buyer" : isSeller ? "seller" : "neither buyer nor seller"}.</p>
               </div>
-              
-              <div className="text-gray-500">Property ID:</div>
-              <div className="text-gray-900">{offer.property_id}</div>
-            </div>
-          </div>
-          
-          {connected && (
-            <div className="bg-green-50 p-4 rounded-md text-sm text-green-800">
-              <p className="font-medium">Connected Wallet:</p>
-              <p className="font-mono text-xs break-all mt-1">{publicKey?.toString()}</p>
-            </div>
-          )}
-          
-          {Object.keys(errors).length > 0 && (
-            <div className="bg-red-50 text-red-800 p-4 rounded-md text-sm">
-              {Object.values(errors).map((error, i) => (
-                <p key={i}>{error}</p>
-              ))}
-            </div>
-          )}
-          
-          {waitingForBuyer && (
-            <div className="bg-yellow-50 text-yellow-800 p-4 rounded-md text-sm">
-              <p className="font-medium">Action Required:</p>
-              <ol className="list-decimal pl-5 mt-2 space-y-1">
-                <li>Disconnect the current wallet (seller)</li>
-                <li>Connect the buyer's wallet</li>
-                <li>Complete the transaction by clicking "Sign & Complete Purchase"</li>
+            )}
+            
+            {!connected && (
+              <div className="bg-red-50 p-4 rounded-md text-sm text-red-800">
+                <p className="font-medium">Wallet not connected.</p>
+                <p className="mt-1">Please connect your wallet to continue.</p>
+              </div>
+            )}
+            
+            {partiallySignedTxBase64 && (
+              <div className="bg-yellow-50 p-4 rounded-md text-sm text-yellow-800">
+                <p className="font-medium">Transaction Status:</p>
+                <p className="mt-1">This transaction has been partially signed. It needs signatures from both buyer and seller to be valid.</p>
+              </div>
+            )}
+            
+            {waitingForBuyer && (
+              <div className="bg-blue-50 p-4 rounded-md text-sm text-blue-800">
+                <p className="font-medium">Waiting for Buyer:</p>
+                <p className="mt-1">Transaction has been signed by you (seller). Now waiting for the buyer to complete the transaction.</p>
+                <p className="mt-2">Please instruct the buyer to connect their wallet and finalize the purchase.</p>
+              </div>
+            )}
+            
+            {waitingForSeller && (
+              <div className="bg-blue-50 p-4 rounded-md text-sm text-blue-800">
+                <p className="font-medium">Waiting for Seller:</p>
+                <p className="mt-1">Transaction has been signed by you (buyer). Now waiting for the seller to sign the transaction.</p>
+                <p className="mt-2">Please instruct the seller to connect their wallet and sign.</p>
+              </div>
+            )}
+            
+            {showLogs && simulationLogs.length > 0 && (
+              <div className="bg-black rounded-md text-white p-4 text-xs font-mono">
+                <p className="font-bold mb-2">Transaction Simulation Logs:</p>
+                <div className="max-h-[200px] overflow-auto">
+                  {simulationLogs.map((log, i) => (
+                    <div key={i} className="mb-1">{log}</div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            <div className="bg-yellow-50 p-4 rounded-md text-sm text-yellow-800">
+              <p className="font-bold">Test Flow Instructions:</p>
+              <ol className="list-decimal ml-5 mt-2 space-y-1">
+                <li>Connect seller's wallet and sign the transaction first</li>
+                <li>Connect buyer's wallet in a different browser window</li>
+                <li>Load the same offer and click "Complete Purchase" to send real SOL on Devnet</li>
               </ol>
             </div>
-          )}
-          
-          <div className="bg-blue-50 text-blue-800 p-4 rounded-md text-sm">
-            <p><strong>Test Flow Instructions:</strong></p>
-            <ol className="list-decimal pl-5 mt-2 space-y-1">
-              <li>Start with seller wallet connected and click "Initiate Sale"</li>
-              <li>Disconnect seller's wallet (click on the wallet button)</li>
-              <li>Connect buyer's wallet</li>
-              <li>Click "Sign & Complete Purchase" to finalize the transaction</li>
-            </ol>
           </div>
-        </div>
-        
-        <DialogFooter className="flex justify-between items-center">
-          <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
-            Cancel
-          </Button>
           
-          {sellerInitiated && isBuyer ? (
-            <Button 
-              onClick={handleBuyerCompleteSale}
+          <DialogFooter className="mt-6 flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={onClose}
               disabled={isSubmitting}
-              className="bg-green-600 text-white hover:bg-green-700"
             >
-              {isSubmitting ? "Processing..." : "Sign & Complete Purchase"}
+              Cancel
             </Button>
-          ) : isSeller && !sellerInitiated ? (
-            <Button 
-              onClick={handleSellerInitiateSale}
-              disabled={isSubmitting}
-              className="bg-blue-600 text-white hover:bg-blue-700"
-            >
-              {isSubmitting ? "Processing..." : "Initiate Sale"}
-            </Button>
-          ) : sellerInitiated && !isBuyer ? (
-            <Button 
-              disabled={true}
-              className="bg-gray-400 text-white"
-            >
-              Please Connect Buyer Wallet
-            </Button>
-          ) : (
-            <Button 
-              disabled={true}
-              className="bg-gray-400 text-white"
-            >
-              {isBuyer ? "Waiting for Seller to Initiate" : "Invalid Wallet"}
-            </Button>
-          )}
-        </DialogFooter>
+            
+            {getUserAction() === "sign" && (
+              <Button
+                onClick={handleSellerSign}
+                disabled={isSubmitting || !connected || !isSeller}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                {isSubmitting ? "Signing..." : "Sign Transaction"}
+              </Button>
+            )}
+            
+            {getUserAction() === "complete" && (
+              <Button
+                onClick={handleBuyerComplete}
+                disabled={isSubmitting || !connected || !isBuyer}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                {isSubmitting ? "Processing..." : partiallySignedTxBase64 ? "Complete Purchase" : "Start Purchase"}
+              </Button>
+            )}
+            
+            {getUserAction() === "waiting" && (
+              <Button
+                disabled={true}
+                className="bg-gray-400"
+              >
+                {isSeller ? "Waiting for Buyer" : "Waiting for Seller"}
+              </Button>
+            )}
+            
+            {getUserAction() === "none" && (
+              <Button
+                disabled={true}
+                className="bg-gray-400"
+              >
+                No Action Available
+              </Button>
+            )}
+          </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
   );

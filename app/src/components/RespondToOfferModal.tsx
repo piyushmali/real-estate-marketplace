@@ -39,9 +39,12 @@ export default function RespondToOfferModal({
   const { publicKey, signTransaction, connected } = useWallet();
   const { token } = useAuth();
 
+  // If seller_wallet is missing, use the current wallet as the seller
+  const effectiveSeller = offer.seller_wallet || (publicKey?.toString() || "");
+
   // Determine if connected wallet is buyer or seller
   const isBuyer = publicKey?.toString() === offer.buyer_wallet;
-  const isSeller = publicKey?.toString() !== offer.buyer_wallet;
+  const isSeller = publicKey?.toString() === effectiveSeller;
 
   // Reset state when modal is closed
   useEffect(() => {
@@ -159,21 +162,31 @@ export default function RespondToOfferModal({
     try {
       setIsSubmitting(true);
       
-      if (!token) {
-        setErrors({ auth: "You must be logged in to respond to offers" });
+      if (!connected || !publicKey) {
+        setErrors({ wallet: "Wallet not connected. Please connect your wallet to continue." });
         toast({
-          title: "Authentication Error",
-          description: "You must be logged in to respond to offers",
+          title: "Wallet Error",
+          description: "Wallet not connected. Please connect your wallet to continue.",
           variant: "destructive"
         });
         return;
       }
       
-      if (!publicKey || !signTransaction) {
-        setErrors({ wallet: "Wallet not connected. Please connect your wallet to continue." });
+      if (!signTransaction) {
+        setErrors({ wallet: "Wallet doesn't support signing. Please use a compatible wallet." });
         toast({
           title: "Wallet Error",
-          description: "Wallet not connected. Please connect your wallet to continue.",
+          description: "Wallet doesn't support signing. Please use a compatible wallet.",
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      if (!token) {
+        setErrors({ auth: "You must be logged in to respond to offers" });
+        toast({
+          title: "Authentication Error",
+          description: "You must be logged in to respond to offers",
           variant: "destructive"
         });
         return;
@@ -192,6 +205,12 @@ export default function RespondToOfferModal({
       
       const walletPublicKeyStr = publicKey.toString();
       console.log("Using wallet public key:", walletPublicKeyStr);
+      
+      // Update offer's seller wallet if it's currently unknown
+      if (!offer.seller_wallet) {
+        console.log("Setting seller wallet to current wallet:", walletPublicKeyStr);
+        offer.seller_wallet = walletPublicKeyStr;
+      }
       
       // Get a fresh blockhash for the transaction
       const blockhash = await fetchRecentBlockhash();
@@ -554,160 +573,155 @@ export default function RespondToOfferModal({
 
   return (
     <Dialog open={visible} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[600px]">
-        <DialogHeader>
-          <DialogTitle>
-            {getModalTitle()}
-          </DialogTitle>
-          <DialogDescription>
-            {getModalDescription()}
-          </DialogDescription>
-        </DialogHeader>
-        
-        <div className="space-y-4">
-          <div className="bg-gray-50 p-4 rounded-md">
-            <h3 className="text-sm font-medium text-gray-700">Offer Details</h3>
-            <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
-              <div className="text-gray-500">Amount:</div>
-              <div className="text-gray-900 font-medium">{(offer.amount / LAMPORTS_PER_SOL).toFixed(2)} SOL</div>
-              
-              <div className="text-gray-500">Buyer:</div>
-              <div className="text-gray-900 font-mono text-xs break-all">{offer.buyer_wallet}</div>
-              
-              <div className="text-gray-500">Seller:</div>
-              <div className="text-gray-900 font-mono text-xs break-all">{offer.seller_wallet || "<Unknown Seller>"}</div>
-              
-              <div className="text-gray-500">Property ID:</div>
-              <div className="text-gray-900">{offer.property_id}</div>
-              
-              <div className="text-gray-500">Status:</div>
-              <div className="text-gray-900">{offerAccepted ? "Accepted" : offer.status}</div>
+      <DialogContent className="sm:max-w-[600px] bg-white">
+        <div className="absolute inset-0 bg-gradient-to-r from-blue-100 to-purple-100 rounded-lg z-0 opacity-60" />
+        <div className="relative z-10">
+          <DialogHeader>
+            <DialogTitle>
+              {getModalTitle()}
+            </DialogTitle>
+            <DialogDescription>
+              {getModalDescription()}
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div className="bg-gray-50 p-4 rounded-md">
+              <h3 className="text-sm font-medium text-gray-700">Offer Details</h3>
+              <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
+                <div className="text-gray-500">Amount:</div>
+                <div className="text-gray-900 font-medium">{(offer.amount / LAMPORTS_PER_SOL).toFixed(2)} SOL</div>
+                
+                <div className="text-gray-500">Buyer:</div>
+                <div className="text-gray-900 font-mono text-xs break-all">{offer.buyer_wallet}</div>
+                
+                <div className="text-gray-500">Seller:</div>
+                <div className="text-gray-900 font-mono text-xs break-all">{offer.seller_wallet || (connected ? publicKey?.toString() : "<Unknown Seller>")}</div>
+                
+                <div className="text-gray-500">Property ID:</div>
+                <div className="text-gray-900">{offer.property_id}</div>
+                
+                <div className="text-gray-500">Status:</div>
+                <div className="text-gray-900">{offerAccepted ? "Accepted" : offer.status}</div>
+              </div>
+            </div>
+            
+            {connected && publicKey && (
+              <div className="bg-green-50 p-4 rounded-md text-sm text-green-800">
+                <p className="font-medium">Connected Wallet:</p>
+                <p className="font-mono text-xs break-all mt-1">{publicKey.toString()}</p>
+                <p className="mt-2">
+                  You are connected as the {isBuyer ? "buyer" : isSeller ? "seller" : "observer"}.
+                  {!isSeller && !isBuyer && " You cannot respond to this offer."}
+                </p>
+              </div>
+            )}
+            
+            {(!connected || !publicKey) && (
+              <div className="bg-red-50 p-4 rounded-md text-sm text-red-800">
+                <p className="font-medium">Wallet not connected.</p>
+                <p className="mt-1">Please connect your wallet to continue.</p>
+              </div>
+            )}
+            
+            {errors.wallet && (
+              <div className="bg-red-50 p-4 rounded-md text-sm text-red-800">
+                <p className="font-medium">Error:</p>
+                <p className="mt-1">{errors.wallet}</p>
+              </div>
+            )}
+            
+            {errors.transaction && (
+              <div className="bg-red-50 p-4 rounded-md text-sm text-red-800">
+                <p className="font-medium">Transaction Error:</p>
+                <p className="mt-1">{errors.transaction}</p>
+              </div>
+            )}
+            
+            {errors.simulation && (
+              <div className="bg-red-50 p-4 rounded-md text-sm text-red-800">
+                <p className="font-medium">Simulation Error:</p>
+                <p className="mt-1">{errors.simulation}</p>
+              </div>
+            )}
+            
+            {errors.auth && (
+              <div className="bg-red-50 p-4 rounded-md text-sm text-red-800">
+                <p className="font-medium">Authentication Error:</p>
+                <p className="mt-1">{errors.auth}</p>
+              </div>
+            )}
+            
+            {showLogs && simulationLogs.length > 0 && (
+              <div className="bg-black rounded-md text-white p-4 text-xs font-mono">
+                <p className="font-bold mb-2">Transaction Simulation Logs:</p>
+                <div className="max-h-[200px] overflow-auto">
+                  {simulationLogs.map((log, i) => (
+                    <div key={i} className="mb-1">{log}</div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {offerAccepted && (
+              <div className="bg-blue-50 p-4 rounded-md text-sm text-blue-800">
+                <p className="font-bold">Next Steps:</p>
+                <p className="mt-1">
+                  This offer has been accepted. The buyer can now complete the purchase transaction.
+                </p>
+              </div>
+            )}
+            
+            <div className="bg-yellow-50 p-4 rounded-md text-sm text-yellow-800">
+              <p className="font-bold">Test Flow Instructions:</p>
+              <ol className="list-decimal ml-5 mt-2 space-y-1">
+                <li>Connect seller's wallet and accept the offer</li>
+                <li>Connect buyer's wallet in a different browser window</li>
+                <li>Navigate to the offer and click "Pay Now" to send real SOL on Devnet</li>
+              </ol>
             </div>
           </div>
           
-          {connected && (
-            <div className="bg-green-50 p-4 rounded-md text-sm text-green-800">
-              <p className="font-medium">Connected Wallet:</p>
-              <p className="font-mono text-xs break-all mt-1">{publicKey?.toString()}</p>
-              <p className="mt-2">You are connected as the {isBuyer ? "buyer" : isSeller ? "seller" : "observer"}.</p>
-            </div>
-          )}
-          
-          {Object.keys(errors).length > 0 && (
-            <div className="bg-red-50 text-red-800 p-4 rounded-md text-sm">
-              {Object.values(errors).map((error, i) => (
-                <p key={i}>{error}</p>
-              ))}
-            </div>
-          )}
-          
-          {isBuyer && offerAccepted && (
-            <div className="bg-blue-50 text-blue-800 p-4 rounded-md text-sm">
-              <p><strong>Complete Your Purchase:</strong></p>
-              <p className="mt-2">
-                The seller has accepted your offer. Click "Pay Now" to send {(offer.amount / LAMPORTS_PER_SOL).toFixed(2)} SOL 
-                to the seller and complete the purchase.
-              </p>
-              <p className="mt-2 font-semibold">
-                This will trigger a real on-chain transaction from your wallet!
-              </p>
-            </div>
-          )}
-          
-          {isSeller && offerAccepted && (
-            <div className="bg-yellow-50 text-yellow-800 p-4 rounded-md text-sm">
-              <p><strong>Waiting for Buyer:</strong></p>
-              <p className="mt-2">
-                You've accepted this offer. Now the buyer needs to send the payment to complete the purchase.
-              </p>
-              <p className="mt-2">
-                The buyer should connect their wallet and click "Pay Now" to complete the transaction.
-              </p>
-            </div>
-          )}
-          
-          {!isBuyer && !isSeller && (
-            <div className="bg-yellow-50 text-yellow-800 p-4 rounded-md text-sm">
-              <p><strong>Invalid Wallet:</strong></p>
-              <p className="mt-2">
-                Your connected wallet is neither the buyer nor the seller for this transaction.
-              </p>
-            </div>
-          )}
-          
-          {showLogs && simulationLogs.length > 0 && (
-            <div className="bg-gray-100 p-4 rounded-md">
-              <div className="flex justify-between items-center mb-2">
-                <h3 className="text-sm font-medium text-gray-700">Transaction Simulation Logs</h3>
-                <button
-                  type="button"
-                  className="text-xs text-blue-600 hover:text-blue-800"
-                  onClick={clearSimulationLogs}
-                >
-                  Clear
-                </button>
-              </div>
-              <div className="max-h-[200px] overflow-auto text-xs">
-                {simulationLogs.map((log, i) => (
-                  <div key={i} className="mb-1 font-mono break-all text-gray-600">{log}</div>
-                ))}
-              </div>
-            </div>
-          )}
-          
-          <div className="bg-blue-50 text-blue-800 p-4 rounded-md text-sm">
-            <p><strong>Test Flow Instructions:</strong></p>
-            <ol className="list-decimal pl-5 mt-2 space-y-1">
-              <li>Connect seller's wallet and accept the offer</li>
-              <li>Connect buyer's wallet in a different browser window</li>
-              <li>Navigate to the offer and click "Pay Now" to send real SOL on Devnet</li>
-            </ol>
-          </div>
-        </div>
-        
-        <DialogFooter className="flex justify-between items-center">
-          <Button 
-            variant="outline" 
-            onClick={onClose}
-            disabled={isSubmitting}
-          >
-            Cancel
-          </Button>
-          
-          {isBuyer && offerAccepted ? (
-            <Button 
-              onClick={handleCompletePurchase}
+          <DialogFooter className="mt-6 flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={onClose}
               disabled={isSubmitting}
-              className="bg-green-600 text-white hover:bg-green-700"
             >
-              {isSubmitting ? "Processing..." : "Pay Now"}
+              Cancel
             </Button>
-          ) : isSeller && !offerAccepted ? (
-            <div className="flex gap-3">
-              <Button 
-                onClick={handleReject}
+            
+            {!offerAccepted && isSeller && connected && publicKey && (
+              <>
+                <Button
+                  variant="destructive"
+                  onClick={handleReject}
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? "Rejecting..." : "Reject"}
+                </Button>
+                
+                <Button
+                  onClick={handleAccept}
+                  disabled={isSubmitting}
+                  className="bg-green-600 hover:bg-green-700"
+                >
+                  {isSubmitting ? "Accepting..." : "Accept"}
+                </Button>
+              </>
+            )}
+            
+            {offerAccepted && isBuyer && connected && publicKey && (
+              <Button
+                onClick={handleCompletePurchase}
                 disabled={isSubmitting}
-                variant="destructive"
+                className="bg-green-600 hover:bg-green-700"
               >
-                {isSubmitting ? "Processing..." : "Reject"}
+                {isSubmitting ? "Processing..." : "Pay Now"}
               </Button>
-              <Button 
-                onClick={handleAccept}
-                disabled={isSubmitting}
-                className="bg-green-600 text-white hover:bg-green-700"
-              >
-                {isSubmitting ? "Processing..." : "Accept"}
-              </Button>
-            </div>
-          ) : (
-            <Button 
-              disabled={true}
-              className="bg-gray-400 text-white"
-            >
-              {isSeller && offerAccepted ? "Waiting for Buyer" : "No Action Available"}
-            </Button>
-          )}
-        </DialogFooter>
+            )}
+          </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
   );
