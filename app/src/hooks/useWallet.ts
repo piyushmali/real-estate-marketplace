@@ -18,6 +18,8 @@ export function useWallet() {
     if (connected && publicKey) {
       // Track wallet changes
       const currentWallet = publicKey.toString();
+      console.log("DEBUG useWallet - Connected wallet:", currentWallet);
+      
       if (previousWallet && previousWallet !== currentWallet) {
         console.log("Wallet changed from", previousWallet, "to", currentWallet);
         
@@ -84,6 +86,7 @@ export function useWallet() {
     needsAuthentication,
     setAuthenticated,
     signTransaction,
-    publicKeyObj: publicKey
+    publicKeyObj: publicKey,
+    walletAddress: publicKey?.toString()  // Make sure this is properly exposed
   };
 } 

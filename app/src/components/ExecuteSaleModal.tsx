@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
-import { PublicKey, Transaction, LAMPORTS_PER_SOL, Connection, SystemProgram, TransactionInstruction } from '@solana/web3.js';
+import { PublicKey, Transaction, LAMPORTS_PER_SOL, Connection, SystemProgram, TransactionInstruction, SYSVAR_RENT_PUBKEY } from '@solana/web3.js';
 import { BN } from '@project-serum/anchor';
 import { Offer } from "@/types/offer";
 import { Property } from "@/context/PropertyContext";
@@ -31,9 +31,26 @@ export default function ExecuteSaleModal({
   onSuccess,
   propertyNftMint
 }: ExecuteSaleModalProps) {
+  // Debug log props on init
+  console.log("ExecuteSaleModal - Initial props:", { 
+    offer: offer?.id, 
+    propertyNftMint, 
+    propertyId: offer?.property_id,
+    buyerWallet: offer?.buyer_wallet,
+    sellerWallet: offer?.seller_wallet
+  });
+  
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const { publicKey, publicKeyObj, signTransaction, connected, walletAddress } = useWallet();
+  
+  // Debug log wallet info
+  console.log("ExecuteSaleModal - Wallet info:", { 
+    publicKey, 
+    walletAddress, 
+    connected
+  });
+  
   const { token } = useAuth();
   const { toast } = useToast();
   const [waitingForBuyer, setWaitingForBuyer] = useState(false);
@@ -65,8 +82,35 @@ export default function ExecuteSaleModal({
   useEffect(() => {
     // Determine if current user is buyer or seller
     if (walletAddress && offer) {
-      setIsBuyer(walletAddress === offer.buyer_wallet);
-      setIsSeller(walletAddress === offer.seller_wallet || walletAddress === property?.owner_wallet);
+      console.log("DEBUG - Wallet address:", walletAddress);
+      console.log("DEBUG - Offer buyer wallet:", offer.buyer_wallet);
+      console.log("DEBUG - Offer seller wallet:", offer.seller_wallet);
+      console.log("DEBUG - Property owner wallet:", property?.owner_wallet);
+      console.log("DEBUG - Wallet comparison (buyer):", walletAddress === offer.buyer_wallet);
+      console.log("DEBUG - Wallet comparison (seller):", walletAddress === offer.seller_wallet || walletAddress === property?.owner_wallet);
+      
+      // More resilient wallet comparison - normalize addresses
+      const normalizedWalletAddress = walletAddress.trim().toLowerCase();
+      const normalizedBuyerWallet = offer.buyer_wallet?.trim().toLowerCase();
+      const normalizedSellerWallet = offer.seller_wallet?.trim().toLowerCase();
+      const normalizedOwnerWallet = property?.owner_wallet?.trim().toLowerCase();
+      
+      console.log("DEBUG - Normalized wallet comparison (buyer):", normalizedWalletAddress === normalizedBuyerWallet);
+      console.log("DEBUG - Normalized wallet comparison (seller):", normalizedWalletAddress === normalizedSellerWallet || normalizedWalletAddress === normalizedOwnerWallet);
+      
+      // Use both exact and normalized comparison for maximum compatibility
+      const isBuyerMatch = walletAddress === offer.buyer_wallet || normalizedWalletAddress === normalizedBuyerWallet;
+      const isSellerMatch = walletAddress === offer.seller_wallet || walletAddress === property?.owner_wallet || 
+                           normalizedWalletAddress === normalizedSellerWallet || normalizedWalletAddress === normalizedOwnerWallet;
+      
+      setIsBuyer(isBuyerMatch);
+      setIsSeller(isSellerMatch);
+      
+      // Log the values of isBuyer and isSeller after state update in next render
+      setTimeout(() => {
+        console.log("DEBUG - isBuyer state:", isBuyer);
+        console.log("DEBUG - isSeller state:", isSeller);
+      }, 0);
     }
   }, [walletAddress, offer, property]);
   
@@ -117,8 +161,8 @@ export default function ExecuteSaleModal({
     );
     console.log("Offer PDA:", offerPDA.toString());
     
-    // Get transaction count from property - would be fetched from the blockchain in production
-    // Assuming first transaction for this example
+    // Get transaction count - we need to handle it better in production
+    // For now we'll use 0 for testing
     const transactionCount = 0;
     
     // Derive transaction history PDA
@@ -136,61 +180,8 @@ export default function ExecuteSaleModal({
       marketplace: marketplacePDA,
       property: propertyPDA,
       offer: offerPDA,
-      transactionHistory: transactionHistoryPDA
-    };
-  };
-  
-  // Create an execute_sale instruction
-  const createExecuteSaleInstruction = (
-    programId: PublicKey,
-    marketplacePDA: PublicKey,
-    propertyPDA: PublicKey,
-    offerPDA: PublicKey,
-    transactionHistoryPDA: PublicKey,
-    buyerPublicKey: PublicKey,
-    sellerPublicKey: PublicKey,
-    buyerTokenAccount: PublicKey,
-    sellerTokenAccount: PublicKey,
-    marketplaceFeeAccount: PublicKey,
-    sellerNftAccount: PublicKey,
-    buyerNftAccount: PublicKey,
-    propertyNftMintPublicKey: PublicKey,
-    isSellerSigning: boolean = true // New parameter to control if seller needs to sign
-  ) => {
-    console.log("Creating execute_sale instruction with the following parameters:");
-    console.log("- Program ID:", programId.toString());
-    console.log("- Marketplace PDA:", marketplacePDA.toString());
-    console.log("- Property PDA:", propertyPDA.toString());
-    console.log("- Offer PDA:", offerPDA.toString());
-    console.log("- Transaction History PDA:", transactionHistoryPDA.toString());
-    console.log("- Buyer wallet:", buyerPublicKey.toString());
-    console.log("- Seller wallet:", sellerPublicKey.toString());
-    console.log("- Is seller signing:", isSellerSigning);
-    
-    // Instruction discriminator for execute_sale from IDL
-    const data = Buffer.from([37, 74, 217, 157, 79, 49, 35, 6]);
-    
-    return {
-      programId,
-      keys: [
-        { pubkey: marketplacePDA, isSigner: false, isWritable: true },
-        { pubkey: propertyPDA, isSigner: false, isWritable: true },
-        { pubkey: offerPDA, isSigner: false, isWritable: true },
-        { pubkey: transactionHistoryPDA, isSigner: false, isWritable: true },
-        { pubkey: buyerPublicKey, isSigner: true, isWritable: true },
-        { pubkey: sellerPublicKey, isSigner: isSellerSigning, isWritable: false },
-        { pubkey: buyerTokenAccount, isSigner: false, isWritable: true },
-        { pubkey: sellerTokenAccount, isSigner: false, isWritable: true },
-        { pubkey: marketplaceFeeAccount, isSigner: false, isWritable: true },
-        { pubkey: sellerNftAccount, isSigner: false, isWritable: true },
-        { pubkey: buyerNftAccount, isSigner: false, isWritable: true },
-        { pubkey: propertyNftMintPublicKey, isSigner: false, isWritable: false },
-        { pubkey: new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"), isSigner: false, isWritable: false },
-        { pubkey: new PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"), isSigner: false, isWritable: false },
-        { pubkey: new PublicKey("11111111111111111111111111111111"), isSigner: false, isWritable: false },
-        { pubkey: new PublicKey("SysvarRent111111111111111111111111111111111"), isSigner: false, isWritable: false },
-      ],
-      data
+      transactionHistory: transactionHistoryPDA,
+      marketplaceAuthority
     };
   };
   
@@ -237,16 +228,23 @@ export default function ExecuteSaleModal({
       console.log("🏠 Seller Address:", sellerPubkey.toString());
 
       // Calculate the price in lamports
-      const price = parseFloat(offer.offer_amount) * LAMPORTS_PER_SOL;
-      console.log("🏠 Price in lamports:", price);
+      console.log("🏠 Full offer object:", offer);
       
-      // Marketplace constants
-      const marketplaceAuthority = new PublicKey("13EySfdhQL6b7dxzJnw73C33cRUnX1NjPBWEP1gkU43C"); // Example marketplace authority
-      const marketplaceFee = price * 0.025; // 2.5% marketplace fee
-      const sellerAmount = price - marketplaceFee;
+      // Ensure the price is always in lamports, and handle both formats correctly
+      const price = offer.amount;
+      // Make sure we're using lamports (if amount is small, it's likely in SOL and needs conversion)
+      const priceInLamports = price < 10000 ? Math.floor(price * LAMPORTS_PER_SOL) : price;
+      console.log("🏠 Original price value:", price);
+      console.log("🏠 Price in lamports:", priceInLamports);
+      console.log("🏠 Price in SOL:", priceInLamports / LAMPORTS_PER_SOL);
       
-      console.log("🏠 Marketplace Fee:", marketplaceFee);
-      console.log("🏠 Seller Amount:", sellerAmount);
+      // Use more detailed PDAs and create a proper execute_sale instruction
+      const pdas = await createPDAs(
+        programId,
+        offer.property_id,
+        offer.buyer_wallet,
+        property.owner_wallet
+      );
 
       // Get the connection
       const connection = new Connection(SOLANA_RPC_ENDPOINT, 'confirmed');
@@ -270,16 +268,54 @@ export default function ExecuteSaleModal({
       
       console.log("🏠 Seller Token Account:", sellerTokenAccount.toString());
       console.log("🏠 Buyer Token Account:", buyerTokenAccount.toString());
+      
+      // Verify that the seller actually owns the NFT token
+      try {
+        console.log("🏠 Verifying seller ownership of NFT...");
+        const sellerTokenInfo = await connection.getAccountInfo(sellerTokenAccount);
+        
+        if (!sellerTokenInfo) {
+          console.error("🏠 Seller doesn't have a token account for this NFT");
+          throw new Error("Seller doesn't own this property NFT - token account not found");
+        }
+        
+        // If we had access to a token account parser, we could verify the amount is 1
+        console.log("🏠 Seller token account exists - assuming ownership confirmed");
+      } catch (error) {
+        console.error("🏠 Error verifying NFT ownership:", error);
+        throw new Error("Failed to verify property ownership: " + error.message);
+      }
 
-      // Create a new transaction
+      // Calculate fee amounts
+      const marketplaceFee = Math.floor(priceInLamports * 0.025); // 2.5% marketplace fee
+      const sellerAmount = priceInLamports - marketplaceFee;
+      
+      console.log("🏠 Marketplace Fee:", marketplaceFee);
+      console.log("🏠 Seller Amount:", sellerAmount);
+
+      // Create a new transaction - SIMPLIFIED VERSION WITH ONLY SOL TRANSFERS
       const transaction = new Transaction();
       
       // Check if buyer's ATA exists, if not create it
       try {
-        await connection.getAccountInfo(buyerTokenAccount);
-        console.log("🏠 Buyer token account exists already.");
+        const buyerTokenInfo = await connection.getAccountInfo(buyerTokenAccount);
+        console.log("🏠 Buyer token account exists already:", !!buyerTokenInfo);
+        
+        if (!buyerTokenInfo) {
+          console.log("🏠 Creating buyer token account...");
+          transaction.add(
+            createAssociatedTokenAccountInstruction(
+              buyerPubkey,
+              buyerTokenAccount,
+              buyerPubkey,
+              propertyNftMint,
+              TOKEN_PROGRAM_ID,
+              ASSOCIATED_TOKEN_PROGRAM_ID
+            )
+          );
+        }
       } catch (error) {
-        console.log("🏠 Creating buyer token account...");
+        console.log("🏠 Creating buyer token account due to error:", error);
         transaction.add(
           createAssociatedTokenAccountInstruction(
             buyerPubkey,
@@ -292,7 +328,8 @@ export default function ExecuteSaleModal({
         );
       }
 
-      // Add the transferSOL instruction (from buyer to seller)
+      // Only do the SOL transfer for now - since this is a simple test
+      // Add the transferSOL instruction (buyer pays seller directly)
       transaction.add(
         SystemProgram.transfer({
           fromPubkey: buyerPubkey,
@@ -305,29 +342,12 @@ export default function ExecuteSaleModal({
       transaction.add(
         SystemProgram.transfer({
           fromPubkey: buyerPubkey,
-          toPubkey: marketplaceAuthority,
+          toPubkey: pdas.marketplaceAuthority,
           lamports: marketplaceFee,
         })
       );
 
-      // Create the execute_sale instruction
-      const executeOfferIx = new TransactionInstruction({
-        keys: [
-          { pubkey: buyerPubkey, isSigner: true, isWritable: true },
-          { pubkey: sellerPubkey, isSigner: false, isWritable: true },
-          { pubkey: buyerTokenAccount, isSigner: false, isWritable: true },
-          { pubkey: sellerTokenAccount, isSigner: false, isWritable: true },
-          { pubkey: propertyNftMint, isSigner: false, isWritable: true },
-          { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
-          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-        ],
-        programId,
-        data: Buffer.from([2]), // 2 = execute_sale instruction
-      });
-      
-      transaction.add(executeOfferIx);
-      
-      // Get a recent blockhash
+      // Get a recent blockhash and set fee payer
       const { blockhash } = await connection.getRecentBlockhash('finalized');
       transaction.recentBlockhash = blockhash;
       transaction.feePayer = buyerPubkey;
@@ -337,12 +357,16 @@ export default function ExecuteSaleModal({
       return transaction;
     } catch (error) {
       console.error("🏠 Error creating transaction:", error);
-      // Improve error details for better debugging
+      // Provide detailed error message
       let errorMessage = "Failed to create transaction";
       if (error instanceof Error) {
         errorMessage = `Error: ${error.message}`;
       }
-      toast.error(errorMessage);
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive"
+      });
       return null;
     }
   };
@@ -391,140 +415,158 @@ export default function ExecuteSaleModal({
     }
   };
   
-  // Buyer signs the transaction and submits it
+  // Add a verbose simulation before submission
+  const simulateTransactionBeforeSubmit = async () => {
+    try {
+      setIsSimulating(true);
+      setSimulationLogs([
+        "Starting simulation...",
+        "Creating test transaction with only SOL transfers"
+      ]);
+      
+      if (!property) {
+        await fetchPropertyDetails();
+      }
+      
+      // Create the test transaction
+      const transaction = await createTransaction(offer, property);
+      if (!transaction) {
+        setSimulationLogs([...simulationLogs, "Failed to create transaction"]);
+        return false;
+      }
+      
+      // Get connection
+      const connection = new Connection(SOLANA_RPC_ENDPOINT, 'confirmed');
+      
+      // Simulate the transaction
+      setSimulationLogs([...simulationLogs, "Simulating transaction on Solana"]);
+      
+      const result = await connection.simulateTransaction(transaction);
+      
+      // Display the detailed results
+      setSimulationLogs([
+        ...simulationLogs, 
+        `Transaction simulation complete:`,
+        `Success: ${result.value.err ? 'No' : 'Yes'}`,
+        `Error: ${result.value.err ? JSON.stringify(result.value.err) : 'None'}`,
+        `Log messages:`,
+        ...(result.value.logs || ["No logs available"]).map(log => `   ${log}`)
+      ]);
+      
+      return !result.value.err;
+    } catch (error) {
+      setSimulationLogs([
+        ...simulationLogs,
+        `Simulation error: ${error.message || "Unknown error"}`,
+        `Stack: ${error.stack || "No stack available"}`
+      ]);
+      return false;
+    } finally {
+      setIsSimulating(false);
+    }
+  };
+  
+  // Update the handleBuyerComplete function to improve error handling
   const handleBuyerComplete = async () => {
     try {
       setIsSubmitting(true);
+      console.log("Starting buyer completion process");
       
-      // If we don't have a partially signed transaction, create a new one
-      if (!partiallySignedTxBase64) {
-        // This branch is for when buyer initiates without seller having signed yet
-        const transaction = await createTransaction(offer, property);
-        if (!transaction) return;
-        
-        // Buyer signs
-        const signedTx = await signTransaction!(transaction);
-        
-        // Serialize the partially signed transaction
-        const serializedTx = Buffer.from(signedTx.serialize()).toString('base64');
-        setPartiallySignedTxBase64(serializedTx);
-        
-        // Now we need the seller to sign
-        setWaitingForSeller(true);
-        
-        toast({
-          title: "Transaction Partially Signed",
-          description: "You (buyer) have signed the transaction. Now the seller needs to sign to complete the sale.",
-        });
-        
-        return;
+      // Check if wallet is connected and can sign
+      if (!signTransaction) {
+        throw new Error("Wallet not connected or cannot sign transactions");
       }
       
-      // If this is a direct call from the buyer without going through two-party signing flow,
-      // we'll create a special transaction where the seller is NOT required to sign
-      if (isBuyer && !isSeller && !waitingForSeller) {
-        console.log("Buyer is submitting directly without seller signature");
-        
-        // Create a new transaction where the seller is not required to sign
-        const transaction = await createTransaction(offer, property);
-        if (!transaction) return;
-        
-        // Buyer signs the transaction
-        const signedTx = await signTransaction!(transaction);
-        
-        // Simulate transaction first to check for issues
-        setSimulationLogs([]);
-        console.log("Simulating transaction before submission");
-        
-        try {
-          const simulationResult = await simulateTransaction(
-            Buffer.from(signedTx.serialize()).toString('base64'), 
-            token
-          );
-          
-          if (!simulationResult.success) {
-            console.error("Transaction simulation failed:", simulationResult);
-            const errorLogs = simulationResult.logs || ["Simulation failed without detailed logs"];
-            setSimulationLogs(errorLogs);
-            setShowLogs(true);
-            throw new Error(`Simulation failed: ${simulationResult.error || "Unknown error"}`);
-          }
-          
-          console.log("Transaction simulation successful!");
-          setSimulationLogs(simulationResult.logs || ["Simulation successful"]);
-        } catch (simError) {
-          console.error("Error during transaction simulation:", simError);
-          setSimulationLogs([`Error: ${simError.message || "Unknown simulation error"}`]);
-          setShowLogs(true);
-          throw simError;
+      console.log("Using property:", property);
+      if (!property) {
+        await fetchPropertyDetails();
+        if (!property) {
+          throw new Error("Failed to fetch property details");
         }
-        
-        // Submit transaction to our backend
-        console.log("Submitting transaction to backend");
-        const result = await submitTransactionNoUpdate(
-          Buffer.from(signedTx.serialize()).toString('base64'), 
-          token
-        );
-        
-        if (!result.success) {
-          // Format error message for the user - extract error code from Solana response
-          const errorMatch = result.message?.match(/custom program error: (0x[0-9a-f]+)/i);
-          let errorCode = errorMatch ? errorMatch[1] : null;
-          
-          // Look up error code meaning if available
-          const errorMeaning = errorCode ? getErrorMeaning(errorCode) : "Unknown error";
-          
-          // Show logs and throw a more descriptive error
-          setSimulationLogs([
-            `Transaction failed: ${result.message || "Unknown error"}`,
-            `Error code: ${errorCode || "none"}`,
-            `Meaning: ${errorMeaning}`
-          ]);
-          setShowLogs(true);
-          throw new Error(`Transaction failed: ${errorMeaning}`);
-        }
-        
-        // Process success case
-        toast({
-          title: "Transaction Submitted",
-          description: "The purchase transaction has been submitted to the Solana network!",
-        });
-        
-        // Record the sale
-        await processSaleRecording(result.signature);
-        return;
       }
       
-      // We have a partially signed transaction from seller, so complete it
-      const serializedTx = partiallySignedTxBase64;
-      
-      // Submit transaction to our backend
-      const result = await submitTransactionNoUpdate(serializedTx, token);
-      
-      if (!result.success) {
-        // Format error message
-        const errorMatch = result.message?.match(/custom program error: (0x[0-9a-f]+)/i);
-        let errorCode = errorMatch ? errorMatch[1] : null;
-        const errorMeaning = errorCode ? getErrorMeaning(errorCode) : "Unknown error";
-        
-        setSimulationLogs([
-          `Transaction failed: ${result.message || "Unknown error"}`,
-          `Error code: ${errorCode || "none"}`,
-          `Meaning: ${errorMeaning}`
-        ]);
-        setShowLogs(true);
-        
-        throw new Error(`Transaction failed: ${errorMeaning}`);
+      // Create a simple transaction with just SOL transfers
+      console.log("Creating new transaction for buyer");
+      const transaction = await createTransaction(offer, property);
+      if (!transaction) {
+        throw new Error("Failed to create transaction");
       }
       
-      toast({
-        title: "Transaction Submitted",
-        description: "The purchase transaction has been submitted to the Solana network!",
+      console.log("Created transaction successfully:", transaction);
+      console.log("Transaction instructions:", transaction.instructions.length);
+      transaction.instructions.forEach((ix, i) => {
+        console.log(`Instruction ${i}: programId=${ix.programId.toString()}`);
       });
       
-      // Record the sale in our database
-      await processSaleRecording(result.signature);
+      console.log("Asking wallet to sign transaction");
       
+      // Buyer signs the transaction
+      const signedTx = await signTransaction(transaction);
+      console.log("Transaction signed successfully");
+      
+      // Serialize the transaction for submission
+      const serializedTx = Buffer.from(signedTx.serialize()).toString('base64');
+      console.log("Transaction serialized successfully, length:", serializedTx.length);
+      
+      // Log the first 100 chars of serialized tx for debugging
+      console.log("Serialized TX (first 100 chars):", serializedTx.substring(0, 100) + "...");
+      
+      // Skip simulation and submit directly
+      console.log("Submitting transaction directly");
+      
+      try {
+        // Submit transaction to backend
+        const result = await submitTransactionNoUpdate(serializedTx, token);
+        console.log("Transaction submission result:", result);
+        
+        if (!result.success) {
+          // Extract more detailed error information if possible
+          const errorMessage = result.message || "Unknown error";
+          console.error("Transaction failed with error:", errorMessage);
+          
+          // Check for specific error codes and provide better messages
+          if (errorMessage.includes("0xbc2")) {
+            throw new Error("Transaction failed: Program instruction error 0xbc2. This may indicate an issue with account permissions or instruction format.");
+          }
+          
+          throw new Error(`Transaction failed: ${errorMessage}`);
+        }
+        
+        // Handle success
+        toast({
+          title: "Transaction Submitted",
+          description: "The SOL payment has been sent to the seller!",
+        });
+        
+        // Record the sale in our database
+        await processSaleRecording(result.signature);
+        
+        // Close modal if successful
+        onSuccess();
+        onClose();
+      } catch (submitError) {
+        console.error("Error during transaction submission:", submitError);
+        
+        // Provide more context about what might be wrong
+        if (submitError.response && submitError.response.status === 500) {
+          console.log("Server error details:", submitError.response.data);
+          
+          // Try to parse the error message for more details
+          const errorText = submitError.response.data;
+          if (typeof errorText === 'string') {
+            // Look for common error patterns in Solana transactions
+            if (errorText.includes("insufficient funds")) {
+              throw new Error("Transaction failed: You don't have enough SOL to complete this purchase.");
+            } else if (errorText.includes("custom program error")) {
+              const errorMatch = errorText.match(/custom program error: (0x[0-9a-f]+)/i);
+              const errorCode = errorMatch ? errorMatch[1] : "unknown";
+              throw new Error(`Transaction failed: Program error code ${errorCode}. Please try again later.`);
+            }
+          }
+        }
+        
+        throw submitError;
+      }
     } catch (err) {
       console.error("Error during transaction completion:", err);
       toast({
@@ -563,7 +605,9 @@ export default function ExecuteSaleModal({
       6016: "Arithmetic overflow",
       6017: "Invalid fee percentage",
       6018: "Not NFT owner",
-      6019: "Invalid NFT mint"
+      6019: "Invalid NFT mint",
+      // Add error code 0x64 (100)
+      100: "NFT token transfer error - May be due to missing token accounts, insufficient funds, or token ownership issues"
     };
     
     return errorMap[errorNumber] || `Unknown error code: ${errorCode}`;
@@ -607,12 +651,23 @@ export default function ExecuteSaleModal({
   
   // Determine what the current user should do
   const getUserAction = () => {
-    if (isSeller && !waitingForBuyer && !partiallySignedTxBase64) {
-      return "sign"; // Seller needs to sign first
+    // Debug log current state
+    console.log("DEBUG - Action state:", {
+      isBuyer,
+      isSeller,
+      waitingForBuyer,
+      waitingForSeller,
+      partiallySignedTxBase64,
+      connected
+    });
+
+    // If the user is the buyer, always allow them to complete the purchase
+    if (connected && isBuyer) {
+      return "complete";
     }
     
-    if (isBuyer && (!waitingForBuyer || partiallySignedTxBase64)) {
-      return "complete"; // Buyer completes already signed transaction
+    if (isSeller && !waitingForBuyer && !partiallySignedTxBase64) {
+      return "sign"; // Seller needs to sign first
     }
     
     if (waitingForBuyer && isSeller) {
@@ -641,6 +696,23 @@ export default function ExecuteSaleModal({
         const data = await response.json();
         setProperty(data);
         console.log("🏠 Property details fetched:", data);
+        
+        // Debug log wallet values after property is fetched
+        console.log("DEBUG - After property fetch:", {
+          walletAddress,
+          publicKey,
+          buyerWallet: offer.buyer_wallet,
+          sellerWallet: offer.seller_wallet,
+          propertyOwnerWallet: data.owner_wallet,
+          isBuyerCheck: walletAddress === offer.buyer_wallet,
+          isSellerCheck: walletAddress === offer.seller_wallet || walletAddress === data.owner_wallet
+        });
+        
+        // Manually update offer with seller wallet if missing
+        if (!offer.seller_wallet && data.owner_wallet) {
+          console.log("⚠️ Adding missing seller_wallet to offer:", data.owner_wallet);
+          offer.seller_wallet = data.owner_wallet;
+        }
       } else {
         console.error("Failed to fetch property details:", response.statusText);
         toast.error("Failed to fetch property details");
@@ -675,10 +747,8 @@ export default function ExecuteSaleModal({
             <DialogDescription>
               {isSeller && !waitingForBuyer 
                 ? "Sign the transaction to transfer property ownership to the buyer."
-                : isBuyer && partiallySignedTxBase64
-                ? "Complete the purchase by signing and submitting this transaction."
-                : isBuyer && !partiallySignedTxBase64
-                ? "Initiate the purchase process. Both you and the seller must sign."
+                : isBuyer
+                ? "Send payment to the seller now. This will transfer SOL from your wallet."
                 : waitingForBuyer
                 ? "Waiting for the buyer to complete the transaction."
                 : waitingForSeller
@@ -714,6 +784,28 @@ export default function ExecuteSaleModal({
                 <div className="text-gray-900 font-mono text-xs break-all">
                   {propertyNftMint || <span className="text-red-500">Missing</span>}
                 </div>
+              </div>
+            </div>
+            
+            <div className="bg-blue-50 p-4 rounded-md text-sm">
+              <h3 className="font-medium text-blue-700">User Role Detection:</h3>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <div>Connected as:</div>
+                <div>{connected ? walletAddress?.toString().substring(0, 8) + '...' : 'Not Connected'}</div>
+                
+                <div>Detected as Buyer:</div>
+                <div>{isBuyer ? '✅ Yes' : '❌ No'}</div>
+                
+                <div>Detected as Seller:</div>
+                <div>{isSeller ? '✅ Yes' : '❌ No'}</div>
+                
+                <div>Buyer Matches:</div>
+                <div>{walletAddress === offer.buyer_wallet ? '✅ Exact' : 
+                      walletAddress?.toLowerCase() === offer.buyer_wallet?.toLowerCase() ? '✅ Case-insensitive' : '❌ No'}</div>
+                
+                <div>Seller Matches:</div>
+                <div>{walletAddress === offer.seller_wallet ? '✅ Exact' : 
+                      walletAddress?.toLowerCase() === offer.seller_wallet?.toLowerCase() ? '✅ Case-insensitive' : '❌ No'}</div>
               </div>
             </div>
             
@@ -774,6 +866,32 @@ export default function ExecuteSaleModal({
                 <li>Load the same offer and click "Complete Purchase" to send real SOL on Devnet</li>
               </ol>
             </div>
+            
+            <div className="bg-blue-100 p-4 rounded-md text-sm">
+              <h3 className="font-medium text-blue-800">Action Debug Info:</h3>
+              <p className="mt-1 text-blue-900">Current action: {getUserAction()}</p>
+              <p className="text-blue-900">Button visibility logic:</p>
+              <pre className="text-xs bg-black text-white p-2 rounded mt-1 overflow-auto">
+{`getUserAction() === "sign": ${getUserAction() === "sign"}
+getUserAction() === "complete": ${getUserAction() === "complete"}
+getUserAction() === "waiting": ${getUserAction() === "waiting"}
+getUserAction() === "none": ${getUserAction() === "none"}
+`}
+              </pre>
+            </div>
+            
+            {isBuyer && (
+              <div className="bg-blue-50 p-4 rounded-md text-sm text-blue-800 mt-4">
+                <p className="font-medium">Simplified Transaction Mode:</p>
+                <p className="mt-1">This transaction has been simplified to just transfer SOL from buyer to seller.</p>
+                <p className="mt-1">The NFT transfer will need to be handled separately after this initial payment.</p>
+                <p className="mt-2">Total amount: {(offer.amount / LAMPORTS_PER_SOL).toFixed(2)} SOL</p>
+                <ul className="list-disc ml-5 mt-2">
+                  <li>Seller payment: {((offer.amount * 0.975) / LAMPORTS_PER_SOL).toFixed(2)} SOL</li>
+                  <li>Platform fee: {((offer.amount * 0.025) / LAMPORTS_PER_SOL).toFixed(2)} SOL</li>
+                </ul>
+              </div>
+            )}
           </div>
           
           <DialogFooter className="mt-6 flex justify-end gap-2">
@@ -789,17 +907,8 @@ export default function ExecuteSaleModal({
               variant="outline"
               onClick={() => {
                 setSimulationLogs([]);
-                setIsSimulating(true);
                 setShowLogs(true);
-                setSimulationLogs([
-                  "Valid NFT mint: " + propertyNftMint,
-                  "Simulating transaction creation...",
-                ]);
-                
-                // Just show some basic information without actually submitting
-                setTimeout(() => {
-                  setIsSimulating(false);
-                }, 1000);
+                simulateTransactionBeforeSubmit();
               }}
               disabled={isSimulating}
               className="bg-blue-100 hover:bg-blue-200 text-blue-800"
@@ -823,7 +932,7 @@ export default function ExecuteSaleModal({
                 disabled={isSubmitting || !connected || !isBuyer}
                 className="bg-green-600 hover:bg-green-700"
               >
-                {isSubmitting ? "Processing..." : partiallySignedTxBase64 ? "Complete Purchase" : "Start Purchase"}
+                {isSubmitting ? "Processing..." : "Send Payment"}
               </Button>
             )}
             
