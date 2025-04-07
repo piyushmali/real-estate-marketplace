@@ -559,21 +559,21 @@ export default function RespondToOfferModal({
 
   return (
     <Dialog open={visible} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[600px] bg-white">
+      <DialogContent className="sm:max-w-[600px] md:max-w-[700px] max-h-[90vh] overflow-y-auto bg-white p-4 sm:p-6">
         <div className="absolute inset-0 bg-gradient-to-r from-blue-100 to-purple-100 rounded-lg z-0 opacity-60" />
         <div className="relative z-10">
-          <DialogHeader>
-            <DialogTitle>
+          <DialogHeader className="mb-4">
+            <DialogTitle className="text-xl">
               {getModalTitle()}
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="text-sm text-gray-600">
               {getModalDescription()}
             </DialogDescription>
           </DialogHeader>
           
           <div className="space-y-4">
             <div className="bg-gray-50 p-4 rounded-md">
-              <h3 className="text-sm font-medium text-gray-700">Offer Details</h3>
+              <h3 className="text-sm font-medium text-gray-700 mb-2">About this transaction</h3>
               <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
                 <div className="text-gray-500">Amount:</div>
                 <div className="text-gray-900 font-medium">{(offer.amount / LAMPORTS_PER_SOL).toFixed(2)} SOL</div>
@@ -591,6 +591,19 @@ export default function RespondToOfferModal({
                 <div className="text-gray-900">{offerAccepted ? "Accepted" : offer.status}</div>
               </div>
             </div>
+            
+            {/* Additional transaction description for accepted offers */}
+            {offerAccepted && (
+              <div className="bg-gray-50 p-4 rounded-md">
+                <h3 className="text-sm font-medium text-gray-700 mb-2">The transaction will:</h3>
+                <ul className="list-disc pl-5 text-sm text-gray-700 space-y-1">
+                  <li>Transfer the payment from your wallet to the seller</li>
+                  <li>Transfer the property NFT from the seller to you</li>
+                  <li>Update the property ownership records</li>
+                  <li>Create a transaction history record</li>
+                </ul>
+              </div>
+            )}
             
             {connected && publicKeyObj && (
               <div className="bg-green-50 p-4 rounded-md text-sm text-green-800">
@@ -660,11 +673,12 @@ export default function RespondToOfferModal({
             )}
           </div>
           
-          <DialogFooter className="mt-6 flex justify-end gap-2">
+          <DialogFooter className="mt-6 flex flex-col sm:flex-row justify-end gap-2">
             <Button
               variant="outline"
               onClick={onClose}
               disabled={isSubmitting}
+              className="w-full sm:w-auto"
             >
               Cancel
             </Button>
@@ -675,6 +689,7 @@ export default function RespondToOfferModal({
                   variant="destructive"
                   onClick={handleReject}
                   disabled={isSubmitting}
+                  className="w-full sm:w-auto mt-2 sm:mt-0"
                 >
                   {isSubmitting ? "Rejecting..." : "Reject"}
                 </Button>
@@ -682,7 +697,7 @@ export default function RespondToOfferModal({
                 <Button
                   onClick={handleAccept}
                   disabled={isSubmitting}
-                  className="bg-green-600 hover:bg-green-700"
+                  className="w-full sm:w-auto bg-green-600 hover:bg-green-700 mt-2 sm:mt-0"
                 >
                   {isSubmitting ? "Accepting..." : "Accept"}
                 </Button>
@@ -693,7 +708,7 @@ export default function RespondToOfferModal({
               <Button
                 onClick={handleCompletePurchase}
                 disabled={isSubmitting}
-                className="bg-green-600 hover:bg-green-700"
+                className="w-full sm:w-auto bg-green-600 hover:bg-green-700 mt-2 sm:mt-0"
               >
                 {isSubmitting ? "Processing..." : "Pay Now"}
               </Button>

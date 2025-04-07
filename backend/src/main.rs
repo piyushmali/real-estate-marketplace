@@ -144,6 +144,9 @@ async fn main() -> std::io::Result<()> {
             .route("/api/transactions/record-sale", web::post().to(transaction::record_property_sale))
             // New endpoint for fetching transaction history
             .route("/api/transactions", web::get().to(transaction::get_transactions))
+            // New endpoints for our workaround solution
+            .route("/api/transactions/complete-transfer", web::post().to(transaction::complete_nft_transfer))
+            .route("/api/properties/update-ownership", web::post().to(transaction::update_property_ownership))
     })
     .bind(("127.0.0.1", port))?
     .run()

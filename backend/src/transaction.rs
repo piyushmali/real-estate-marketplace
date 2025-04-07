@@ -607,4 +607,174 @@ pub async fn get_transactions(req: HttpRequest) -> impl Responder {
             })
         }
     }
+}
+
+// Add after the get_transactions function
+#[derive(Debug, Deserialize)]
+pub struct CompleteNFTTransferRequest {
+    pub transaction_signature: String,
+    pub property_id: String,
+    pub nft_mint: String,
+    pub seller_wallet: String,
+    pub buyer_wallet: String,
+    pub offer_id: String,
+    pub amount: f64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CompleteNFTTransferResponse {
+    pub success: bool,
+    pub message: String,
+    pub nft_transaction_signature: Option<String>,
+}
+
+/// Handles the NFT transfer using admin authority after SOL payment has been completed
+pub async fn complete_nft_transfer(
+    req: HttpRequest,
+    data: web::Json<CompleteNFTTransferRequest>,
+) -> impl Responder {
+    // Verify authentication token
+    let wallet_address = match verify_token(&req).await {
+        Ok(wallet) => wallet,
+        Err(resp) => return resp,
+    };
+
+    // Verify that the requester is the buyer
+    if wallet_address != data.buyer_wallet {
+        return HttpResponse::Forbidden().body("Only the buyer can request NFT transfer completion");
+    }
+
+    info!(
+        "Processing NFT transfer completion for property {} from {} to {}", 
+        data.property_id, data.seller_wallet, data.buyer_wallet
+    );
+
+    // In a real implementation, this would:
+    // 1. Load the admin keypair from secure storage
+    // 2. Create a Token Program transfer instruction to move the NFT 
+    // 3. Sign and submit that transaction
+
+    // For now, we'll log information and return success as a placeholder
+    // The actual NFT transfer would be implemented in a secure way in production
+
+    info!("NFT transfer from {} to {} would be executed here", data.seller_wallet, data.buyer_wallet);
+    info!("Property ID: {}, NFT Mint: {}", data.property_id, data.nft_mint);
+    info!("Original transaction signature: {}", data.transaction_signature);
+
+    // Here you would use the admin keypair to sign and submit the NFT transfer transaction
+    
+    HttpResponse::Ok().json(CompleteNFTTransferResponse {
+        success: true,
+        message: "NFT transfer request processed successfully. In production, this would transfer the NFT.".to_string(),
+        nft_transaction_signature: Some("simulated_nft_tx_signature".to_string()),
+    })
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdatePropertyOwnershipRequest {
+    pub property_id: String, 
+    pub new_owner: String,
+    pub offer_id: String,
+    pub transaction_signature: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct UpdatePropertyOwnershipResponse {
+    pub success: bool,
+    pub message: String,
+}
+
+/// Updates property ownership in the database after sale completion
+pub async fn update_property_ownership(
+    req: HttpRequest,
+    data: web::Json<UpdatePropertyOwnershipRequest>,
+) -> impl Responder {
+    // Verify authentication token
+    let wallet_address = match verify_token(&req).await {
+        Ok(wallet) => wallet,
+        Err(resp) => return resp,
+    };
+
+    // Verify that the requester is the new owner
+    if wallet_address != data.new_owner {
+        return HttpResponse::Forbidden().body("Only the new owner can update property ownership");
+    }
+
+    // Parse offer_id string to UUID
+    let offer_uuid = match Uuid::parse_str(&data.offer_id) {
+        Ok(uuid) => uuid,
+        Err(e) => {
+            error!("Invalid offer UUID format: {}", e);
+            return HttpResponse::BadRequest().json(UpdatePropertyOwnershipResponse {
+                success: false,
+                message: format!("Invalid offer ID format: {}", e),
+            });
+        }
+    };
+
+    let mut conn = match db::establish_connection() {
+        Ok(conn) => conn,
+        Err(e) => {
+            error!("Failed to connect to database: {}", e);
+            return HttpResponse::InternalServerError().body("Database connection failed");
+        }
+    };
+
+    let now = Utc::now().naive_utc();
+    
+    // Update property ownership in the properties table
+    let property_update_result = {
+        use crate::schema::properties::dsl::{properties, property_id as prop_id, owner_wallet, updated_at as prop_updated_at};
+        
+        diesel::update(properties.filter(prop_id.eq(&data.property_id)))
+            .set((
+                owner_wallet.eq(&data.new_owner),
+                prop_updated_at.eq(now),
+            ))
+            .execute(&mut conn)
+    };
+
+    match property_update_result {
+        Ok(_) => {
+            info!("Property ownership transferred to {}", data.new_owner);
+            
+            // Update the status of the associated offer to 'completed'
+            let offer_update_result = {
+                use crate::schema::offers::dsl::{offers, id as offer_id, status, updated_at as offer_updated_at};
+                
+                // Use the parsed UUID instead of the string
+                diesel::update(offers.filter(offer_id.eq(offer_uuid)))
+                    .set((
+                        status.eq("completed"),
+                        offer_updated_at.eq(now),
+                    ))
+                    .execute(&mut conn)
+            };
+
+            match offer_update_result {
+                Ok(_) => {
+                    info!("Offer status updated to completed");
+                    HttpResponse::Ok().json(UpdatePropertyOwnershipResponse {
+                        success: true,
+                        message: "Property ownership updated successfully".to_string(),
+                    })
+                },
+                Err(e) => {
+                    error!("Failed to update offer status: {}", e);
+                    // Continue anyway since the property ownership was updated
+                    HttpResponse::Ok().json(UpdatePropertyOwnershipResponse {
+                        success: true,
+                        message: "Property ownership updated but offer status update failed".to_string(),
+                    })
+                }
+            }
+        },
+        Err(e) => {
+            error!("Failed to update property ownership: {}", e);
+            HttpResponse::InternalServerError().json(UpdatePropertyOwnershipResponse {
+                success: false,
+                message: format!("Failed to update property ownership: {}", e),
+            })
+        }
+    }
 } 

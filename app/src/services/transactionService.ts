@@ -221,4 +221,84 @@ export const getTransactionHistory = async (token: string) => {
     console.error('Error fetching transaction history:', error);
     throw error;
   }
+};
+
+export const completeNFTTransfer = async (
+  transactionSignature: string, 
+  propertyId: string,
+  nftMint: string,
+  sellerWallet: string,
+  buyerWallet: string,
+  offerId: string,
+  amount: number,
+  token: string
+) => {
+  try {
+    console.log(`Requesting backend to complete NFT transfer for property ${propertyId}`);
+    console.log(`Transaction signature: ${transactionSignature}`);
+    console.log(`NFT Mint: ${nftMint}`);
+    console.log(`Seller: ${sellerWallet}`);
+    console.log(`Buyer: ${buyerWallet}`);
+    
+    const response = await axios.post(
+      `${API_URL}/api/transactions/complete-transfer`,
+      {
+        transaction_signature: transactionSignature,
+        property_id: propertyId,
+        nft_mint: nftMint,
+        seller_wallet: sellerWallet,
+        buyer_wallet: buyerWallet,
+        offer_id: offerId,
+        amount: amount
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+      }
+    );
+    
+    console.log("NFT transfer completion request sent:", response.data);
+    return response.data;
+  } catch (error) {
+    console.error('Error requesting NFT transfer completion:', error);
+    throw error;
+  }
+};
+
+export const updatePropertyOwnership = async (
+  propertyId: string,
+  newOwner: string,
+  offerId: string,
+  transactionSignature: string,
+  token: string
+) => {
+  try {
+    console.log(`Updating property ownership for property ${propertyId}`);
+    console.log(`New owner: ${newOwner}`);
+    console.log(`Transaction signature: ${transactionSignature}`);
+    
+    const response = await axios.post(
+      `${API_URL}/api/properties/update-ownership`,
+      {
+        property_id: propertyId,
+        new_owner: newOwner,
+        offer_id: offerId,
+        transaction_signature: transactionSignature
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+      }
+    );
+    
+    console.log("Property ownership updated successfully:", response.data);
+    return response.data;
+  } catch (error) {
+    console.error('Error updating property ownership:', error);
+    throw error;
+  }
 }; 
