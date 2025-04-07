@@ -57,7 +57,7 @@ describe("Real Estate Marketplace", () => {
     });
     const tx = new anchor.web3.Transaction().add(transferIx);
     await provider.sendAndConfirm(tx, [authority.payer]);
-    console.log(`Transferred 5 SOL to buyer: ${buyer.publicKey.toBase58()}`);
+    console.log(`Transferred 2 SOL to buyer: ${buyer.publicKey.toBase58()}`);
     await ensureMinimumBalance(buyer.publicKey, 2 * LAMPORTS_PER_SOL);
 
     // Initialize marketplace once
@@ -125,39 +125,6 @@ describe("Real Estate Marketplace", () => {
       expect(propertyAccount.nftMint.toString()).to.equal(propertyNFTMint.toString());
       expect(propertyAccount.metadataUri).to.equal("https://example.com/meta/p123.json");
     });
-
-    // it("Handle invalid property listing attempts", async () => {
-    //   const [newPropertyPDA] = await PublicKey.findProgramAddress(
-    //     [Buffer.from("property"), marketplacePDA.toBuffer(), Buffer.from("InvalidProp123")],
-    //     program.programId
-    //   );
-    //   try {
-    //     await program.methods.listProperty(
-    //       "A".repeat(33),
-    //       new anchor.BN(1000000),
-    //       "https://example.com",
-    //       "123 Blockchain St",
-    //       new anchor.BN(2500),
-    //       3,
-    //       2
-    //     )
-    //     .accounts({
-    //       marketplace: marketplacePDA,
-    //       property: newPropertyPDA,
-    //       owner: authority.publicKey,
-    //       propertyNftMint: propertyNFTMint,
-    //       ownerNftAccount: ownerNFTAccount,
-    //       systemProgram: SystemProgram.programId,
-    //       tokenProgram: token.TOKEN_PROGRAM_ID,
-    //       associatedTokenProgram: token.ASSOCIATED_TOKEN_PROGRAM_ID,
-    //       rent: anchor.web3.SYSVAR_RENT_PUBKEY,
-    //     })
-    //     .rpc();
-    //     expect.fail("Should have failed with too long property ID");
-    //   } catch (error) {
-    //     expect(error.toString()).to.include("PropertyIdTooLong");
-    //   }
-    // });
   });
 
   describe("Property Update", () => {
@@ -206,8 +173,10 @@ describe("Real Estate Marketplace", () => {
     });
   });
 
-  describe("Offer Creation", () => {
+  describe("Offer Creation with Escrow", () => {
     let offerPDA: PublicKey;
+    let escrowPDA: PublicKey;
+    let initialBuyerBalance: number;
 
     before(async () => {
       await program.methods.updateProperty(null, null, true)
@@ -218,78 +187,96 @@ describe("Real Estate Marketplace", () => {
           propertyNftMint: propertyNFTMint
         })
         .rpc();
+      
       [offerPDA] = await PublicKey.findProgramAddress(
         [Buffer.from("offer"), propertyPDA.toBuffer(), buyer.publicKey.toBuffer()],
         program.programId
       );
+      
+      [escrowPDA] = await PublicKey.findProgramAddress(
+        [Buffer.from("escrow"), propertyPDA.toBuffer(), buyer.publicKey.toBuffer()],
+        program.programId
+      );
+      
+      initialBuyerBalance = await provider.connection.getBalance(buyer.publicKey);
     });
 
-    it("Create valid offer on an active property", async () => {
+    it("Create offer with funds transferred to escrow", async () => {
+      const offerAmount = 900000;
+      
       await program.methods.makeOffer(
-        new anchor.BN(900000),
+        new anchor.BN(offerAmount),
         new anchor.BN(Math.floor(Date.now() / 1000) + 86400)
       )
       .accounts({
         property: propertyPDA,
         offer: offerPDA,
+        escrowAccount: escrowPDA,
         buyer: buyer.publicKey,
         systemProgram: SystemProgram.programId,
         rent: anchor.web3.SYSVAR_RENT_PUBKEY
       })
       .signers([buyer])
       .rpc();
+      
+      // Verify offer created
+      const offerAccount = await program.account.offer.fetch(offerPDA);
+      expect(offerAccount.buyer.toString()).to.equal(buyer.publicKey.toString());
+      expect(offerAccount.amount.toNumber()).to.equal(offerAmount);
+      expect(offerAccount.escrow.toString()).to.equal(escrowPDA.toString());
+      
+      // Verify escrow account
+      const escrowAccount = await program.account.escrowAccount.fetch(escrowPDA);
+      expect(escrowAccount.buyer.toString()).to.equal(buyer.publicKey.toString());
+      expect(escrowAccount.property.toString()).to.equal(propertyPDA.toString());
+      expect(escrowAccount.amount.toNumber()).to.equal(offerAmount);
+      expect(escrowAccount.isActive).to.be.true;
+      
+      // Verify funds transferred
+      const finalBuyerBalance = await provider.connection.getBalance(buyer.publicKey);
+      const escrowBalance = await provider.connection.getBalance(escrowPDA);
+      
+      // Account for rent and transaction fees
+      expect(initialBuyerBalance - finalBuyerBalance).to.be.greaterThan(offerAmount);
+      expect(escrowBalance).to.be.greaterThan(0);
     });
 
-    // it("Prevent offer creation on own property", async () => {
-    //   const [selfOfferPDA] = await PublicKey.findProgramAddress(
-    //     [Buffer.from("offer"), propertyPDA.toBuffer(), authority.publicKey.toBuffer()],
-    //     program.programId
-    //   );
-    //   try {
-    //     await program.methods.makeOffer(
-    //       new anchor.BN(900000),
-    //       new anchor.BN(Math.floor(Date.now() / 1000) + 86400)
-    //     )
-    //     .accounts({
-    //       property: propertyPDA,
-    //       offer: selfOfferPDA,
-    //       buyer: authority.publicKey,
-    //       systemProgram: SystemProgram.programId,
-    //       rent: anchor.web3.SYSVAR_RENT_PUBKEY
-    //     })
-    //     .signers([authority.payer])
-    //     .rpc();
-    //     expect.fail("Should have failed offering on own property");
-    //   } catch (error) {
-    //     expect(error.toString()).to.include("CannotOfferOwnProperty");
-    //   }
-    // });
-
-    it("Handle offer with valid expiration time", async () => {
+    it("Handle expiration time in offer", async () => {
       const offerAccount = await program.account.offer.fetch(offerPDA);
       expect(offerAccount.expirationTime.toNumber()).to.be.greaterThan(Math.floor(Date.now() / 1000));
     });
   });
 
-  describe("Offer Response", () => {
+  describe("Offer Response and Property Transfer", () => {
     let offerPDA: PublicKey;
+    let escrowPDA: PublicKey;
+    let buyerNFTAccount: PublicKey;
     let propertyPDA: PublicKey;
     let propertyNFTMint: PublicKey;
     let ownerNFTAccount: PublicKey;
+    let transactionHistoryPDA: PublicKey;
+    
+    let sellerInitialBalance: number;
+    let buyerInitialBalance: number;
+    let authorityInitialBalance: number;
 
     async function setupPropertyAndOffer(propertyId: string, offerAmount: number, expirationOffset: number) {
+      // Create NFT for property
       const nftAccounts = await createNFTMintAndAccount(authority.publicKey);
       propertyNFTMint = nftAccounts.mint;
       ownerNFTAccount = nftAccounts.tokenAccount;
+      
+      // Create property PDA
       [propertyPDA] = await PublicKey.findProgramAddress(
         [Buffer.from("property"), marketplacePDA.toBuffer(), Buffer.from(propertyId)],
         program.programId
       );
 
+      // List property
       await program.methods.listProperty(
         propertyId,
         new anchor.BN(1000000),
-        "https://example.com/meta/p456.json",
+        "https://example.com/meta/property.json",
         "456 Blockchain St",
         new anchor.BN(3000),
         4,
@@ -308,11 +295,36 @@ describe("Real Estate Marketplace", () => {
       })
       .rpc();
 
+      // Create buyer's NFT account for this property
+      buyerNFTAccount = await token.getOrCreateAssociatedTokenAccount(
+        provider.connection,
+        authority.payer,
+        propertyNFTMint,
+        buyer.publicKey
+      ).then(ata => ata.address);
+
+      // Get offer and escrow PDAs
       [offerPDA] = await PublicKey.findProgramAddress(
         [Buffer.from("offer"), propertyPDA.toBuffer(), buyer.publicKey.toBuffer()],
         program.programId
       );
+      
+      [escrowPDA] = await PublicKey.findProgramAddress(
+        [Buffer.from("escrow"), propertyPDA.toBuffer(), buyer.publicKey.toBuffer()],
+        program.programId
+      );
+      
+      [transactionHistoryPDA] = await PublicKey.findProgramAddress(
+        [Buffer.from("transaction"), propertyPDA.toBuffer(), new Uint8Array([1, 0, 0, 0, 0, 0, 0, 0])],
+        program.programId
+      );
 
+      // Record initial balances
+      sellerInitialBalance = await provider.connection.getBalance(authority.publicKey);
+      buyerInitialBalance = await provider.connection.getBalance(buyer.publicKey);
+      authorityInitialBalance = await provider.connection.getBalance(authority.publicKey);
+
+      // Make offer with escrow
       await program.methods.makeOffer(
         new anchor.BN(offerAmount),
         new anchor.BN(Math.floor(Date.now() / 1000) + expirationOffset)
@@ -320,6 +332,7 @@ describe("Real Estate Marketplace", () => {
       .accounts({
         property: propertyPDA,
         offer: offerPDA,
+        escrowAccount: escrowPDA,
         buyer: buyer.publicKey,
         systemProgram: SystemProgram.programId,
         rent: anchor.web3.SYSVAR_RENT_PUBKEY
@@ -328,226 +341,107 @@ describe("Real Estate Marketplace", () => {
       .rpc();
     }
 
-    it("Accept pending offer within expiration", async () => {
-      await setupPropertyAndOffer("Property456", 900000, 86400);
+    it("Accept offer and complete property transfer", async () => {
+      await setupPropertyAndOffer("PropertyAccept", 800000, 86400);
+      
+      // Accept the offer which should trigger the property transfer
       await program.methods.respondToOffer(true)
-        .accounts({
-          property: propertyPDA,
-          offer: offerPDA,
-          owner: authority.publicKey,
-        })
-        .rpc();
-      const offerAccount = await program.account.offer.fetch(offerPDA);
-      expect(offerAccount.status).to.deep.equal({ accepted: {} });
-    });
-
-    it("Reject pending offer", async () => {
-      await setupPropertyAndOffer("Property457", 950000, 86400);
-      await program.methods.respondToOffer(false)
-        .accounts({
-          property: propertyPDA,
-          offer: offerPDA,
-          owner: authority.publicKey,
-        })
-        .rpc();
-      const offerAccount = await program.account.offer.fetch(offerPDA);
-      expect(offerAccount.status).to.deep.equal({ rejected: {} });
-    });
-
-    // it("Handle expired offer scenarios", async () => {
-    //   await setupPropertyAndOffer("Property458", 900000, 1);
-    //   await new Promise(resolve => setTimeout(resolve, 2000));
-    //   try {
-    //     await program.methods.respondToOffer(true)
-    //       .accounts({
-    //         property: propertyPDA,
-    //         offer: offerPDA,
-    //         owner: authority.publicKey,
-    //       })
-    //       .rpc();
-    //     expect.fail("Should have failed with expired offer");
-    //   } catch (error) {
-    //     expect(error.toString()).to.include("OfferExpired");
-    //   }
-    // });
-  });
-
-  describe("Sale Execution", () => {
-    let offerPDA: PublicKey;
-    let transactionHistoryPDA: PublicKey;
-    let buyerNFTAccount: PublicKey;
-    let buyerTokenAccount: PublicKey;
-    let sellerTokenAccount: PublicKey;
-    let marketplaceFeeAccount: PublicKey;
-    let paymentMint: PublicKey;
-    let propertyPDA: PublicKey;
-    let propertyNFTMint: PublicKey;
-    let ownerNFTAccount: PublicKey;
-
-    before(async () => {
-      const nftAccounts = await createNFTMintAndAccount(authority.publicKey);
-      propertyNFTMint = nftAccounts.mint;
-      ownerNFTAccount = nftAccounts.tokenAccount;
-      [propertyPDA] = await PublicKey.findProgramAddress(
-        [Buffer.from("property"), marketplacePDA.toBuffer(), Buffer.from("Property789")],
-        program.programId
-      );
-
-      await program.methods.listProperty(
-        "Property789",
-        new anchor.BN(1000000 * LAMPORTS_PER_SOL),
-        "https://example.com/meta/p789.json",
-        "789 Blockchain St",
-        new anchor.BN(3500),
-        5,
-        4
-      )
-      .accounts({
-        marketplace: marketplacePDA,
-        property: propertyPDA,
-        owner: authority.publicKey,
-        propertyNftMint: propertyNFTMint,
-        ownerNftAccount: ownerNFTAccount,
-        systemProgram: SystemProgram.programId,
-        tokenProgram: token.TOKEN_PROGRAM_ID,
-        associatedTokenProgram: token.ASSOCIATED_TOKEN_PROGRAM_ID,
-        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
-      })
-      .rpc();
-
-      [offerPDA] = await PublicKey.findProgramAddress(
-        [Buffer.from("offer"), propertyPDA.toBuffer(), buyer.publicKey.toBuffer()],
-        program.programId
-      );
-
-      await program.methods.makeOffer(
-        new anchor.BN(900000 * LAMPORTS_PER_SOL),
-        new anchor.BN(Math.floor(Date.now() / 1000) + 86400)
-      )
-      .accounts({
-        property: propertyPDA,
-        offer: offerPDA,
-        buyer: buyer.publicKey,
-        systemProgram: SystemProgram.programId,
-        rent: anchor.web3.SYSVAR_RENT_PUBKEY
-      })
-      .signers([buyer])
-      .rpc();
-
-      await program.methods.respondToOffer(true)
-        .accounts({
-          property: propertyPDA,
-          offer: offerPDA,
-          owner: authority.publicKey,
-        })
-        .rpc();
-
-      buyerNFTAccount = await token.getOrCreateAssociatedTokenAccount(
-        provider.connection,
-        authority.payer,
-        propertyNFTMint,
-        buyer.publicKey
-      ).then(ata => ata.address);
-
-      const mintKp = anchor.web3.Keypair.generate();
-      paymentMint = mintKp.publicKey;
-      await token.createMint(
-        provider.connection,
-        authority.payer,
-        authority.publicKey,
-        null,
-        6,
-        mintKp
-      );
-
-      buyerTokenAccount = await token.getOrCreateAssociatedTokenAccount(
-        provider.connection,
-        authority.payer,
-        paymentMint,
-        buyer.publicKey
-      ).then(ata => ata.address);
-
-      sellerTokenAccount = await token.getOrCreateAssociatedTokenAccount(
-        provider.connection,
-        authority.payer,
-        paymentMint,
-        authority.publicKey
-      ).then(ata => ata.address);
-
-      const feeReceiver = anchor.web3.Keypair.generate();
-      marketplaceFeeAccount = await token.getOrCreateAssociatedTokenAccount(
-        provider.connection,
-        authority.payer,
-        paymentMint,
-        feeReceiver.publicKey
-      ).then(ata => ata.address);
-
-      await token.mintTo(
-        provider.connection,
-        authority.payer,
-        paymentMint,
-        buyerTokenAccount,
-        authority.payer,
-        1000000 * LAMPORTS_PER_SOL
-      );
-
-      [transactionHistoryPDA] = await PublicKey.findProgramAddress(
-        [Buffer.from("transaction"), propertyPDA.toBuffer(), new Uint8Array([1, 0, 0, 0, 0, 0, 0, 0])],
-        program.programId
-      );
-    });
-
-    it("Complete sale for accepted offer", async () => {
-      await program.methods.executeSale()
         .accounts({
           marketplace: marketplacePDA,
           property: propertyPDA,
           offer: offerPDA,
-          transactionHistory: transactionHistoryPDA,
-          buyer: buyer.publicKey,
-          seller: authority.publicKey,
-          buyerTokenAccount: buyerTokenAccount,
-          sellerTokenAccount: sellerTokenAccount,
-          marketplaceFeeAccount: marketplaceFeeAccount,
+          escrowAccount: escrowPDA,
+          marketplaceAuthority: authority.publicKey,
+          owner: authority.publicKey,
+          buyerWallet: buyer.publicKey,
           sellerNftAccount: ownerNFTAccount,
           buyerNftAccount: buyerNFTAccount,
-          propertyNftMint: propertyNFTMint,
+          transactionHistory: transactionHistoryPDA,
           tokenProgram: token.TOKEN_PROGRAM_ID,
-          associatedTokenProgram: token.ASSOCIATED_TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
           rent: anchor.web3.SYSVAR_RENT_PUBKEY,
         })
-        .signers([buyer])
         .rpc();
-
+      
+      // Verify offer status
+      const offerAccount = await program.account.offer.fetch(offerPDA);
+      expect(offerAccount.status).to.deep.equal({ completed: {} });
+      
+      // Verify property ownership transferred
       const propertyAccount = await program.account.property.fetch(propertyPDA);
       expect(propertyAccount.owner.toString()).to.equal(buyer.publicKey.toString());
       expect(propertyAccount.isActive).to.be.false;
-    });
-
-    it("Verify token and NFT transfers", async () => {
+      
+      // Verify NFT transferred
       const buyerNFTBalance = await provider.connection.getTokenAccountBalance(buyerNFTAccount);
       const sellerNFTBalance = await provider.connection.getTokenAccountBalance(ownerNFTAccount);
-      const sellerTokenBalance = await provider.connection.getTokenAccountBalance(sellerTokenAccount);
-      const marketplaceFeeBalance = await provider.connection.getTokenAccountBalance(marketplaceFeeAccount);
-
       expect(buyerNFTBalance.value.uiAmount).to.equal(1);
       expect(sellerNFTBalance.value.uiAmount).to.equal(0);
-      expect(Number(sellerTokenBalance.value.amount)).to.be.closeTo(891000000000000, 1000000000); // 891 SOL (adjusted for 6 decimals)
-      expect(Number(marketplaceFeeBalance.value.amount)).to.be.closeTo(9000000000000, 1000000000);  // 9 SOL (1% fee)
+      
+      // Verify escrow is inactive
+      const escrowAccount = await program.account.escrowAccount.fetch(escrowPDA);
+      expect(escrowAccount.isActive).to.be.false;
+      
+      // Verify funds transferred to seller
+      const sellerFinalBalance = await provider.connection.getBalance(authority.publicKey);
+      const marketplaceFee = 800000 * 0.01; // 1% fee
+      const expectedSellerIncrease = 800000 - marketplaceFee;
+      
+      // Due to rent and transaction fees, we use an approximate check
+      expect(sellerFinalBalance - sellerInitialBalance).to.be.closeTo(expectedSellerIncrease, 10000);
+      
+      // Verify transaction history
+      const txHistory = await program.account.transactionHistory.fetch(transactionHistoryPDA);
+      expect(txHistory.buyer.toString()).to.equal(buyer.publicKey.toString());
+      expect(txHistory.seller.toString()).to.equal(authority.publicKey.toString());
+      expect(txHistory.property.toString()).to.equal(propertyPDA.toString());
+      expect(txHistory.price.toNumber()).to.equal(800000);
     });
 
-    it("Calculate and transfer marketplace fees", async () => {
-      const marketplaceAccount = await program.account.marketplace.fetch(marketplacePDA);
-      const feePercentage = marketplaceAccount.feePercentage.toNumber();
-      const expectedFee = (900000 * LAMPORTS_PER_SOL * feePercentage) / 10000;
-      const expectedSellerAmount = (900000 * LAMPORTS_PER_SOL) - expectedFee;
-
-      const sellerTokenBalance = await provider.connection.getTokenAccountBalance(sellerTokenAccount);
-      const marketplaceFeeBalance = await provider.connection.getTokenAccountBalance(marketplaceFeeAccount);
-
-      expect(Number(sellerTokenBalance.value.amount)).to.be.closeTo(expectedSellerAmount, LAMPORTS_PER_SOL / 1000);
-      expect(Number(marketplaceFeeBalance.value.amount)).to.be.closeTo(expectedFee, LAMPORTS_PER_SOL / 1000);
+    it("Reject offer and return funds to buyer", async () => {
+      await setupPropertyAndOffer("PropertyReject", 700000, 86400);
+      
+      const escrowBalanceBefore = await provider.connection.getBalance(escrowPDA);
+      const buyerBalanceBefore = await provider.connection.getBalance(buyer.publicKey);
+      
+      // Reject the offer
+      await program.methods.respondToOffer(false)
+        .accounts({
+          marketplace: marketplacePDA,
+          property: propertyPDA,
+          offer: offerPDA,
+          escrowAccount: escrowPDA,
+          marketplaceAuthority: authority.publicKey,
+          owner: authority.publicKey,
+          buyerWallet: buyer.publicKey,
+          sellerNftAccount: ownerNFTAccount,
+          buyerNftAccount: buyerNFTAccount,
+          transactionHistory: transactionHistoryPDA,
+          tokenProgram: token.TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+          rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+        })
+        .rpc();
+      
+      // Verify offer status
+      const offerAccount = await program.account.offer.fetch(offerPDA);
+      expect(offerAccount.status).to.deep.equal({ rejected: {} });
+      
+      // Verify escrow is inactive
+      const escrowAccount = await program.account.escrowAccount.fetch(escrowPDA);
+      expect(escrowAccount.isActive).to.be.false;
+      
+      // Verify property still owned by seller
+      const propertyAccount = await program.account.property.fetch(propertyPDA);
+      expect(propertyAccount.owner.toString()).to.equal(authority.publicKey.toString());
+      
+      // Verify funds returned to buyer
+      const escrowBalanceAfter = await provider.connection.getBalance(escrowPDA);
+      const buyerBalanceAfter = await provider.connection.getBalance(buyer.publicKey);
+      
+      expect(escrowBalanceAfter).to.be.lessThan(escrowBalanceBefore);
+      // Buyer should have received most of their funds back (minus transaction fees)
+      expect(buyerBalanceAfter - buyerBalanceBefore).to.be.closeTo(0, 10000); // Allow for small differences due to transaction fees
     });
   });
 });

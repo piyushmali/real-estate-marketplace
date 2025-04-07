@@ -7,7 +7,7 @@ use anchor_spl::{
 };
 use std::mem::size_of;
 
-declare_id!("BdSKkquiFKRqxbXYC3Jufz9K59xisZ33VNbyaigkStW6");
+declare_id!("E7v7RResymJU5XvvPA9uwxGSEEsdSE6XvaP7BTV2GGoQ");
 
 #[program]
 pub mod real_estate_marketplace {
@@ -189,6 +189,7 @@ pub mod real_estate_marketplace {
     ) -> Result<()> {
         let property = &ctx.accounts.property;
         let offer = &mut ctx.accounts.offer;
+        let escrow = &mut ctx.accounts.escrow_account;
         let clock = Clock::get()?;
 
         require!(property.is_active, ErrorCode::PropertyNotActive);
@@ -198,6 +199,23 @@ pub mod real_estate_marketplace {
             ErrorCode::InvalidExpirationTime
         );
 
+        // Transfer SOL from buyer to escrow PDA
+        let transfer_instruction = anchor_lang::solana_program::system_instruction::transfer(
+            &ctx.accounts.buyer.key(),
+            &escrow.key(),
+            offer_amount,
+        );
+
+        anchor_lang::solana_program::program::invoke(
+            &transfer_instruction,
+            &[
+                ctx.accounts.buyer.to_account_info(),
+                escrow.to_account_info(),
+                ctx.accounts.system_program.to_account_info(),
+            ],
+        )?;
+
+        // Initialize offer account
         offer.buyer = ctx.accounts.buyer.key();
         offer.property = property.key();
         offer.amount = offer_amount;
@@ -205,6 +223,14 @@ pub mod real_estate_marketplace {
         offer.created_at = clock.unix_timestamp;
         offer.updated_at = clock.unix_timestamp;
         offer.expiration_time = expiration_time;
+        offer.escrow = escrow.key();
+
+        // Initialize escrow account data
+        escrow.buyer = ctx.accounts.buyer.key();
+        escrow.property = property.key();
+        escrow.amount = offer_amount;
+        escrow.created_at = clock.unix_timestamp;
+        escrow.is_active = true;
 
         emit!(OfferCreated {
             offer: offer.key(),
@@ -220,31 +246,206 @@ pub mod real_estate_marketplace {
     pub fn respond_to_offer(ctx: Context<RespondToOffer>, accept: bool) -> Result<()> {
         let property = &mut ctx.accounts.property;
         let offer = &mut ctx.accounts.offer;
+        let escrow = &mut ctx.accounts.escrow_account;
         let clock = Clock::get()?;
 
         require!(
             offer.status == OfferStatus::Pending,
             ErrorCode::OfferNotPending
         );
+        
+        require!(
+            escrow.is_active,
+            ErrorCode::EscrowNotActive
+        );
 
         if offer.expiration_time <= clock.unix_timestamp {
             offer.status = OfferStatus::Expired;
             offer.updated_at = clock.unix_timestamp;
+            
+            // Return funds to buyer if offer expired
+            let bump = ctx.bumps.escrow_account;
+            let property_key = property.key();
+            let buyer_key = offer.buyer;
+            let seeds = &[
+                b"escrow", 
+                property_key.as_ref(), 
+                buyer_key.as_ref(),
+                &[bump]
+            ];
+            let signer = &[&seeds[..]];
+            
+            let transfer_instruction = anchor_lang::solana_program::system_instruction::transfer(
+                &escrow.key(),
+                &offer.buyer,
+                escrow.amount,
+            );
+            
+            anchor_lang::solana_program::program::invoke_signed(
+                &transfer_instruction,
+                &[
+                    escrow.to_account_info(),
+                    ctx.accounts.buyer_wallet.to_account_info(),
+                    ctx.accounts.system_program.to_account_info(),
+                ],
+                signer,
+            )?;
+            
+            escrow.is_active = false;
+            
             return Err(ErrorCode::OfferExpired.into());
         }
 
         if accept {
-            offer.status = OfferStatus::Accepted;
+            // Calculate marketplace fee
+            let marketplace = &ctx.accounts.marketplace;
+            let fee_amount = offer
+                .amount
+                .checked_mul(marketplace.fee_percentage)
+                .ok_or(ErrorCode::ArithmeticOverflow)?
+                .checked_div(10000)
+                .ok_or(ErrorCode::ArithmeticOverflow)?;
+            
+            let seller_amount = offer
+                .amount
+                .checked_sub(fee_amount)
+                .ok_or(ErrorCode::ArithmeticOverflow)?;
+            
+            // Transfer funds from escrow to seller and marketplace
+            let bump = ctx.bumps.escrow_account;
+            let property_key = property.key();
+            let buyer_key = offer.buyer;
+            let seeds = &[
+                b"escrow", 
+                property_key.as_ref(), 
+                buyer_key.as_ref(),
+                &[bump]
+            ];
+            let signer = &[&seeds[..]];
+            
+            // Transfer seller amount
+            let transfer_to_seller_instruction = anchor_lang::solana_program::system_instruction::transfer(
+                &escrow.key(),
+                &ctx.accounts.owner.key(),
+                seller_amount,
+            );
+            
+            anchor_lang::solana_program::program::invoke_signed(
+                &transfer_to_seller_instruction,
+                &[
+                    escrow.to_account_info(),
+                    ctx.accounts.owner.to_account_info(),
+                    ctx.accounts.system_program.to_account_info(),
+                ],
+                signer,
+            )?;
+            
+            // Transfer marketplace fee
+            if fee_amount > 0 {
+                let transfer_fee_instruction = anchor_lang::solana_program::system_instruction::transfer(
+                    &escrow.key(),
+                    &ctx.accounts.marketplace_authority.key(),
+                    fee_amount,
+                );
+                
+                anchor_lang::solana_program::program::invoke_signed(
+                    &transfer_fee_instruction,
+                    &[
+                        escrow.to_account_info(),
+                        ctx.accounts.marketplace_authority.to_account_info(),
+                        ctx.accounts.system_program.to_account_info(),
+                    ],
+                    signer,
+                )?;
+            }
+            
+            // Transfer NFT from seller to buyer
+            token::transfer(
+                CpiContext::new(
+                    ctx.accounts.token_program.to_account_info(),
+                    Transfer {
+                        from: ctx.accounts.seller_nft_account.to_account_info(),
+                        to: ctx.accounts.buyer_nft_account.to_account_info(),
+                        authority: ctx.accounts.owner.to_account_info(),
+                    },
+                ),
+                1,
+            )?;
+            
+            // Update property owner and status
+            let previous_owner = property.owner;
+            property.owner = offer.buyer;
+            property.price = offer.amount;
+            property.is_active = false;
+            property.updated_at = clock.unix_timestamp;
+            property.transaction_count = property
+                .transaction_count
+                .checked_add(1)
+                .ok_or(ErrorCode::ArithmeticOverflow)?;
+                
+            // Create transaction history
+            let transaction_history = &mut ctx.accounts.transaction_history;
+            transaction_history.property = property.key();
+            transaction_history.seller = previous_owner;
+            transaction_history.buyer = offer.buyer;
+            transaction_history.price = offer.amount;
+            transaction_history.timestamp = clock.unix_timestamp;
+            transaction_history.transaction_index = property.transaction_count;
+            
+            offer.status = OfferStatus::Completed;
+            escrow.is_active = false;
+            
+            emit!(PropertySold {
+                property: property.key(),
+                transaction_history: transaction_history.key(),
+                previous_owner,
+                new_owner: property.owner,
+                price: offer.amount,
+                nft_mint: property.nft_mint,
+                timestamp: clock.unix_timestamp,
+            });
+            
             emit!(OfferAccepted {
                 offer: offer.key(),
                 property: property.key(),
                 buyer: offer.buyer,
-                seller: property.owner,
+                seller: previous_owner,
                 amount: offer.amount,
                 timestamp: clock.unix_timestamp,
             });
         } else {
             offer.status = OfferStatus::Rejected;
+            
+            // Return funds to buyer
+            let bump = ctx.bumps.escrow_account;
+            let property_key = property.key();
+            let buyer_key = offer.buyer;
+            let seeds = &[
+                b"escrow", 
+                property_key.as_ref(), 
+                buyer_key.as_ref(),
+                &[bump]
+            ];
+            let signer = &[&seeds[..]];
+            
+            let transfer_instruction = anchor_lang::solana_program::system_instruction::transfer(
+                &escrow.key(),
+                &offer.buyer,
+                escrow.amount,
+            );
+            
+            anchor_lang::solana_program::program::invoke_signed(
+                &transfer_instruction,
+                &[
+                    escrow.to_account_info(),
+                    ctx.accounts.buyer_wallet.to_account_info(),
+                    ctx.accounts.system_program.to_account_info(),
+                ],
+                signer,
+            )?;
+            
+            escrow.is_active = false;
+            
             emit!(OfferRejected {
                 offer: offer.key(),
                 property: property.key(),
@@ -255,106 +456,6 @@ pub mod real_estate_marketplace {
         }
 
         offer.updated_at = clock.unix_timestamp;
-
-        Ok(())
-    }
-
-    pub fn execute_sale(ctx: Context<ExecuteSale>) -> Result<()> {
-        let property = &mut ctx.accounts.property;
-        let offer = &mut ctx.accounts.offer;
-        let marketplace = &ctx.accounts.marketplace;
-        let clock = Clock::get()?;
-
-        require!(
-            offer.status == OfferStatus::Accepted,
-            ErrorCode::OfferNotAccepted
-        );
-        require!(
-            offer.property == property.key(),
-            ErrorCode::OfferPropertyMismatch
-        );
-
-        // Deserialize the token account to check ownership
-        let seller_nft_account = TokenAccount::try_deserialize(&mut &ctx.accounts.seller_nft_account.data.borrow()[..])?;
-        require!(seller_nft_account.amount == 1, ErrorCode::NotNFTOwner);
-
-        let fee_amount = offer
-            .amount
-            .checked_mul(marketplace.fee_percentage)
-            .ok_or(ErrorCode::ArithmeticOverflow)?
-            .checked_div(10000)
-            .ok_or(ErrorCode::ArithmeticOverflow)?;
-        let seller_amount = offer
-            .amount
-            .checked_sub(fee_amount)
-            .ok_or(ErrorCode::ArithmeticOverflow)?;
-
-        token::transfer(
-            CpiContext::new(
-                ctx.accounts.token_program.to_account_info(),
-                Transfer {
-                    from: ctx.accounts.buyer_token_account.to_account_info(),
-                    to: ctx.accounts.seller_token_account.to_account_info(),
-                    authority: ctx.accounts.buyer.to_account_info(),
-                },
-            ),
-            seller_amount,
-        )?;
-
-        token::transfer(
-            CpiContext::new(
-                ctx.accounts.token_program.to_account_info(),
-                Transfer {
-                    from: ctx.accounts.buyer_token_account.to_account_info(),
-                    to: ctx.accounts.marketplace_fee_account.to_account_info(),
-                    authority: ctx.accounts.buyer.to_account_info(),
-                },
-            ),
-            fee_amount,
-        )?;
-
-        token::transfer(
-            CpiContext::new(
-                ctx.accounts.token_program.to_account_info(),
-                Transfer {
-                    from: ctx.accounts.seller_nft_account.to_account_info(),
-                    to: ctx.accounts.buyer_nft_account.to_account_info(),
-                    authority: ctx.accounts.seller.to_account_info(),
-                },
-            ),
-            1,
-        )?;
-
-        let previous_owner = property.owner;
-        property.owner = offer.buyer;
-        property.price = offer.amount;
-        property.is_active = false;
-        property.updated_at = clock.unix_timestamp;
-        property.transaction_count = property
-            .transaction_count
-            .checked_add(1)
-            .ok_or(ErrorCode::ArithmeticOverflow)?;
-
-        let transaction_history = &mut ctx.accounts.transaction_history;
-        transaction_history.property = property.key();
-        transaction_history.seller = previous_owner;
-        transaction_history.buyer = offer.buyer;
-        transaction_history.price = offer.amount;
-        transaction_history.timestamp = clock.unix_timestamp;
-        transaction_history.transaction_index = property.transaction_count;
-
-        offer.status = OfferStatus::Completed;
-        offer.updated_at = clock.unix_timestamp;
-
-        emit!(PropertySold {
-            property: property.key(),
-            transaction_history: transaction_history.key(),
-            previous_owner,
-            new_owner: property.owner,
-            price: offer.amount,
-            nft_mint: property.nft_mint,
-            timestamp: clock.unix_timestamp,
-        });
 
         Ok(())
     }
@@ -447,6 +548,7 @@ pub struct MakeOffer<'info> {
         constraint = property.owner != *buyer.key
     )]
     pub property: Account<'info, Property>,
+    
     #[account(
         init,
         payer = buyer,
@@ -455,6 +557,16 @@ pub struct MakeOffer<'info> {
         bump
     )]
     pub offer: Account<'info, Offer>,
+    
+    #[account(
+        init,
+        payer = buyer,
+        space = 8 + size_of::<EscrowAccount>(),
+        seeds = [b"escrow", property.key().as_ref(), buyer.key().as_ref()],
+        bump
+    )]
+    pub escrow_account: Account<'info, EscrowAccount>,
+    
     #[account(mut)]
     pub buyer: Signer<'info>,
     pub system_program: Program<'info, System>,
@@ -463,36 +575,57 @@ pub struct MakeOffer<'info> {
 
 #[derive(Accounts)]
 pub struct RespondToOffer<'info> {
+    #[account(mut)]
+    pub marketplace: Account<'info, Marketplace>,
+    
     #[account(
         mut,
         constraint = property.owner == *owner.key
     )]
     pub property: Account<'info, Property>,
+    
     #[account(
         mut,
         constraint = offer.property == property.key()
     )]
     pub offer: Account<'info, Offer>,
-    #[account(mut)]
-    pub owner: Signer<'info>,
-}
-
-#[derive(Accounts)]
-pub struct ExecuteSale<'info> {
-    #[account(mut)]
-    pub marketplace: Account<'info, Marketplace>,
-    #[account(mut)]
-    pub property: Account<'info, Property>,
+    
     #[account(
         mut,
-        constraint = offer.property == property.key(),
-        constraint = offer.status == OfferStatus::Accepted,
-        constraint = offer.buyer == *buyer.key
+        seeds = [b"escrow", property.key().as_ref(), offer.buyer.as_ref()],
+        bump,
+        constraint = escrow_account.property == property.key()
     )]
-    pub offer: Account<'info, Offer>,
+    pub escrow_account: Account<'info, EscrowAccount>,
+    
+    /// CHECK: This is the marketplace authority
     #[account(
-        init,
-        payer = buyer,
+        mut,
+        constraint = marketplace.authority == marketplace_authority.key()
+    )]
+    pub marketplace_authority: AccountInfo<'info>,
+    
+    #[account(mut)]
+    pub owner: Signer<'info>,
+    
+    /// CHECK: This is the buyer's wallet
+    #[account(
+        mut,
+        constraint = offer.buyer == *buyer_wallet.key
+    )]
+    pub buyer_wallet: AccountInfo<'info>,
+    
+    /// CHECK: This is the seller's NFT token account
+    #[account(mut)]
+    pub seller_nft_account: AccountInfo<'info>,
+    
+    /// CHECK: This is the buyer's NFT token account
+    #[account(mut)]
+    pub buyer_nft_account: AccountInfo<'info>,
+    
+    #[account(
+        init_if_needed,
+        payer = owner,
         space = 8 + size_of::<TransactionHistory>(),
         seeds = [
             b"transaction",
@@ -502,34 +635,8 @@ pub struct ExecuteSale<'info> {
         bump
     )]
     pub transaction_history: Account<'info, TransactionHistory>,
-    #[account(mut)]
-    pub buyer: Signer<'info>,
-    #[account(
-        constraint = property.owner == *seller.key
-    )]
-    pub seller: Signer<'info>,
-    /// CHECK: This is the buyer's token account for payment
-    #[account(mut)]
-    pub buyer_token_account: AccountInfo<'info>,
-    /// CHECK: This is the seller's token account for payment
-    #[account(mut)]
-    pub seller_token_account: AccountInfo<'info>,
-    /// CHECK: This is the marketplace fee token account
-    #[account(mut)]
-    pub marketplace_fee_account: AccountInfo<'info>,
-    /// CHECK: This is the seller's NFT token account
-    #[account(mut)]
-    pub seller_nft_account: AccountInfo<'info>,
-    /// CHECK: This is the buyer's NFT token account
-    #[account(mut)]
-    pub buyer_nft_account: AccountInfo<'info>,
-    /// CHECK: This is the NFT mint account
-    #[account(
-        constraint = property.nft_mint == *property_nft_mint.key
-    )]
-    pub property_nft_mint: AccountInfo<'info>,
+    
     pub token_program: Program<'info, Token>,
-    pub associated_token_program: Program<'info, AssociatedToken>,
     pub system_program: Program<'info, System>,
     pub rent: Sysvar<'info, Rent>,
 }
@@ -568,6 +675,16 @@ pub struct Offer {
     pub created_at: i64,
     pub updated_at: i64,
     pub expiration_time: i64,
+    pub escrow: Pubkey,  // New field to store escrow PDA
+}
+
+#[account]
+pub struct EscrowAccount {
+    pub buyer: Pubkey,
+    pub property: Pubkey,
+    pub amount: u64,
+    pub created_at: i64,
+    pub is_active: bool,
 }
 
 #[account]
@@ -689,4 +806,6 @@ pub enum ErrorCode {
     NotNFTOwner,
     #[msg("Invalid NFT mint")]
     InvalidNFTMint,
+    #[msg("Escrow account not active")]
+    EscrowNotActive,
 }
