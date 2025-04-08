@@ -45,14 +45,14 @@ pub mod real_estate_marketplace {
         let property = &mut ctx.accounts.property;
         let clock = Clock::get()?;
 
-        // Mint NFT for the property
+        // Mint NFT for the property using mint_authority
         token::mint_to(
             CpiContext::new(
                 ctx.accounts.token_program.to_account_info(),
                 MintTo {
                     mint: ctx.accounts.property_nft_mint.to_account_info(),
                     to: ctx.accounts.owner_nft_account.to_account_info(),
-                    authority: ctx.accounts.owner.to_account_info(),
+                    authority: ctx.accounts.mint_authority.to_account_info(),
                 },
             ),
             1,
@@ -504,15 +504,14 @@ pub struct ListProperty<'info> {
     pub property: Account<'info, Property>,
     #[account(mut)]
     pub owner: Signer<'info>,
-    /// CHECK: This is the NFT mint account, initialized by the token program
-    #[account(
-        mut,
-        constraint = property_nft_mint.owner == &token::ID
-    )]
+    /// CHECK: Validated in the token program
+    #[account(mut)]
     pub property_nft_mint: AccountInfo<'info>,
-    /// CHECK: This is the owner's NFT token account, managed by the associated token program
+    /// CHECK: Validated in the token program
     #[account(mut)]
     pub owner_nft_account: AccountInfo<'info>,
+    /// CHECK: Validated in the token program
+    pub mint_authority: Signer<'info>,  // Add mint authority signer
     pub system_program: Program<'info, System>,
     pub token_program: Program<'info, Token>,
     pub associated_token_program: Program<'info, AssociatedToken>,
