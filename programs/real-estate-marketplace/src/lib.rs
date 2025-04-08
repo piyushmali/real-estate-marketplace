@@ -199,10 +199,10 @@ pub mod real_estate_marketplace {
             ErrorCode::InvalidExpirationTime
         );
 
-        // Transfer SOL from buyer to escrow PDA
+        // Transfer SOL from buyer to escrow_vault PDA (not to escrow account with data)
         let transfer_instruction = anchor_lang::solana_program::system_instruction::transfer(
             &ctx.accounts.buyer.key(),
-            &escrow.key(),
+            &ctx.accounts.escrow_vault.key(),
             offer_amount,
         );
 
@@ -210,7 +210,7 @@ pub mod real_estate_marketplace {
             &transfer_instruction,
             &[
                 ctx.accounts.buyer.to_account_info(),
-                escrow.to_account_info(),
+                ctx.accounts.escrow_vault.to_account_info(),
                 ctx.accounts.system_program.to_account_info(),
             ],
         )?;
@@ -224,6 +224,7 @@ pub mod real_estate_marketplace {
         offer.updated_at = clock.unix_timestamp;
         offer.expiration_time = expiration_time;
         offer.escrow = escrow.key();
+        offer.vault = ctx.accounts.escrow_vault.key();
 
         // Initialize escrow account data
         escrow.buyer = ctx.accounts.buyer.key();
@@ -231,6 +232,7 @@ pub mod real_estate_marketplace {
         escrow.amount = offer_amount;
         escrow.created_at = clock.unix_timestamp;
         escrow.is_active = true;
+        escrow.vault = ctx.accounts.escrow_vault.key();
 
         emit!(OfferCreated {
             offer: offer.key(),
@@ -259,24 +261,30 @@ pub mod real_estate_marketplace {
             ErrorCode::EscrowNotActive
         );
 
+        // Ensure vault PDA matches the one stored in escrow
+        require!(
+            escrow.vault == ctx.accounts.escrow_vault.key(),
+            ErrorCode::InvalidVaultAccount
+        );
+
         if offer.expiration_time <= clock.unix_timestamp {
             offer.status = OfferStatus::Expired;
             offer.updated_at = clock.unix_timestamp;
             
             // Return funds to buyer if offer expired
-            let bump = ctx.bumps.escrow_account;
+            let vault_bump = ctx.bumps.escrow_vault;
             let property_key = property.key();
             let buyer_key = offer.buyer;
-            let seeds = &[
-                b"escrow", 
+            let vault_seeds = &[
+                b"escrow_vault", 
                 property_key.as_ref(), 
                 buyer_key.as_ref(),
-                &[bump]
+                &[vault_bump]
             ];
-            let signer = &[&seeds[..]];
+            let vault_signer = &[&vault_seeds[..]];
             
             let transfer_instruction = anchor_lang::solana_program::system_instruction::transfer(
-                &escrow.key(),
+                &ctx.accounts.escrow_vault.key(),
                 &offer.buyer,
                 escrow.amount,
             );
@@ -284,11 +292,11 @@ pub mod real_estate_marketplace {
             anchor_lang::solana_program::program::invoke_signed(
                 &transfer_instruction,
                 &[
-                    escrow.to_account_info(),
+                    ctx.accounts.escrow_vault.to_account_info(),
                     ctx.accounts.buyer_wallet.to_account_info(),
                     ctx.accounts.system_program.to_account_info(),
                 ],
-                signer,
+                vault_signer,
             )?;
             
             escrow.is_active = false;
@@ -311,21 +319,21 @@ pub mod real_estate_marketplace {
                 .checked_sub(fee_amount)
                 .ok_or(ErrorCode::ArithmeticOverflow)?;
             
-            // Transfer funds from escrow to seller and marketplace
-            let bump = ctx.bumps.escrow_account;
+            // Transfer funds from vault to seller and marketplace
+            let vault_bump = ctx.bumps.escrow_vault;
             let property_key = property.key();
             let buyer_key = offer.buyer;
-            let seeds = &[
-                b"escrow", 
+            let vault_seeds = &[
+                b"escrow_vault", 
                 property_key.as_ref(), 
                 buyer_key.as_ref(),
-                &[bump]
+                &[vault_bump]
             ];
-            let signer = &[&seeds[..]];
+            let vault_signer = &[&vault_seeds[..]];
             
-            // Transfer seller amount
+            // Transfer seller amount using vault PDA (not escrow)
             let transfer_to_seller_instruction = anchor_lang::solana_program::system_instruction::transfer(
-                &escrow.key(),
+                &ctx.accounts.escrow_vault.key(),
                 &ctx.accounts.owner.key(),
                 seller_amount,
             );
@@ -333,17 +341,17 @@ pub mod real_estate_marketplace {
             anchor_lang::solana_program::program::invoke_signed(
                 &transfer_to_seller_instruction,
                 &[
-                    escrow.to_account_info(),
+                    ctx.accounts.escrow_vault.to_account_info(),
                     ctx.accounts.owner.to_account_info(),
                     ctx.accounts.system_program.to_account_info(),
                 ],
-                signer,
+                vault_signer,
             )?;
             
             // Transfer marketplace fee
             if fee_amount > 0 {
                 let transfer_fee_instruction = anchor_lang::solana_program::system_instruction::transfer(
-                    &escrow.key(),
+                    &ctx.accounts.escrow_vault.key(),
                     &ctx.accounts.marketplace_authority.key(),
                     fee_amount,
                 );
@@ -351,11 +359,11 @@ pub mod real_estate_marketplace {
                 anchor_lang::solana_program::program::invoke_signed(
                     &transfer_fee_instruction,
                     &[
-                        escrow.to_account_info(),
+                        ctx.accounts.escrow_vault.to_account_info(),
                         ctx.accounts.marketplace_authority.to_account_info(),
                         ctx.accounts.system_program.to_account_info(),
                     ],
-                    signer,
+                    vault_signer,
                 )?;
             }
             
@@ -416,20 +424,20 @@ pub mod real_estate_marketplace {
         } else {
             offer.status = OfferStatus::Rejected;
             
-            // Return funds to buyer
-            let bump = ctx.bumps.escrow_account;
+            // Return funds to buyer from vault
+            let vault_bump = ctx.bumps.escrow_vault;
             let property_key = property.key();
             let buyer_key = offer.buyer;
-            let seeds = &[
-                b"escrow", 
+            let vault_seeds = &[
+                b"escrow_vault", 
                 property_key.as_ref(), 
                 buyer_key.as_ref(),
-                &[bump]
+                &[vault_bump]
             ];
-            let signer = &[&seeds[..]];
+            let vault_signer = &[&vault_seeds[..]];
             
             let transfer_instruction = anchor_lang::solana_program::system_instruction::transfer(
-                &escrow.key(),
+                &ctx.accounts.escrow_vault.key(),
                 &offer.buyer,
                 escrow.amount,
             );
@@ -437,11 +445,11 @@ pub mod real_estate_marketplace {
             anchor_lang::solana_program::program::invoke_signed(
                 &transfer_instruction,
                 &[
-                    escrow.to_account_info(),
+                    ctx.accounts.escrow_vault.to_account_info(),
                     ctx.accounts.buyer_wallet.to_account_info(),
                     ctx.accounts.system_program.to_account_info(),
                 ],
-                signer,
+                vault_signer,
             )?;
             
             escrow.is_active = false;
@@ -566,6 +574,14 @@ pub struct MakeOffer<'info> {
     )]
     pub escrow_account: Account<'info, EscrowAccount>,
     
+    /// CHECK: This is a PDA that will only hold SOL, not program data
+    #[account(
+        mut,
+        seeds = [b"escrow_vault", property.key().as_ref(), buyer.key().as_ref()],
+        bump
+    )]
+    pub escrow_vault: UncheckedAccount<'info>,
+    
     #[account(mut)]
     pub buyer: Signer<'info>,
     pub system_program: Program<'info, System>,
@@ -596,6 +612,14 @@ pub struct RespondToOffer<'info> {
         constraint = escrow_account.property == property.key()
     )]
     pub escrow_account: Account<'info, EscrowAccount>,
+    
+    /// CHECK: This is the vault PDA for holding SOL
+    #[account(
+        mut,
+        seeds = [b"escrow_vault", property.key().as_ref(), offer.buyer.as_ref()],
+        bump
+    )]
+    pub escrow_vault: UncheckedAccount<'info>,
     
     /// CHECK: This is the marketplace authority
     #[account(
@@ -674,7 +698,8 @@ pub struct Offer {
     pub created_at: i64,
     pub updated_at: i64,
     pub expiration_time: i64,
-    pub escrow: Pubkey,  // New field to store escrow PDA
+    pub escrow: Pubkey,  // Reference to escrow account
+    pub vault: Pubkey,   // New field to store vault PDA
 }
 
 #[account]
@@ -684,6 +709,7 @@ pub struct EscrowAccount {
     pub amount: u64,
     pub created_at: i64,
     pub is_active: bool,
+    pub vault: Pubkey,   // Reference to the vault PDA
 }
 
 #[account]
@@ -807,4 +833,6 @@ pub enum ErrorCode {
     InvalidNFTMint,
     #[msg("Escrow account not active")]
     EscrowNotActive,
+    #[msg("Invalid vault account")]
+    InvalidVaultAccount,
 }
