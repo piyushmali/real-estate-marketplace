@@ -9,10 +9,12 @@ import { respondToOffer } from "../services/offerService";
 import { submitTransactionNoUpdate, getRecentBlockhash, recordPropertySale, simulateTransaction } from "../services/transactionService";
 import { useWallet } from "@/hooks/useWallet";
 import { useAuth } from "@/hooks/useAuth";
+import { getToken } from "@/lib/auth";
 
 // Define constants
 const MARKETPLACE_PROGRAM_ID = "E7v7RResymJU5XvvPA9uwxGSEEsdSE6XvaP7BTV2GGoQ";
 const SOLANA_RPC_ENDPOINT = "https://api.devnet.solana.com";
+const TOKEN_PROGRAM_ID = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 
 interface RespondToOfferModalProps {
   offer: Offer;
@@ -84,14 +86,22 @@ export default function RespondToOfferModal({
     programId: PublicKey,
     propertyPda: PublicKey,
     offerPda: PublicKey,
+    escrowPda: PublicKey,
     ownerWallet: PublicKey,
+    buyerWallet: PublicKey,
+    sellerNftAccount: PublicKey,
+    escrowNftAccount: PublicKey,
     accept: boolean
   ) => {
     console.log("Creating respond_to_offer instruction with the following parameters:");
     console.log(`- Program ID: ${programId.toString()}`);
     console.log(`- Property PDA: ${propertyPda.toString()}`);
     console.log(`- Offer PDA: ${offerPda.toString()}`);
+    console.log(`- Escrow PDA: ${escrowPda.toString()}`);
     console.log(`- Owner wallet: ${ownerWallet.toString()}`);
+    console.log(`- Buyer wallet: ${buyerWallet.toString()}`);
+    console.log(`- Seller NFT account: ${sellerNftAccount.toString()}`);
+    console.log(`- Escrow NFT account: ${escrowNftAccount.toString()}`);
     console.log(`- Accept: ${accept}`);
     
     // Construct the instruction data for respond_to_offer
@@ -105,13 +115,17 @@ export default function RespondToOfferModal({
     // Set the boolean value (1 for true, 0 for false)
     dataLayout.set([accept ? 1 : 0], 8);
     
-    // Create the instruction with accounts in the right order
+    // Create the instruction with accounts in the right order according to RespondToOffer struct
     return {
       programId,
       keys: [
-        { pubkey: propertyPda, isSigner: false, isWritable: true },  // property
-        { pubkey: offerPda, isSigner: false, isWritable: true },     // offer
-        { pubkey: ownerWallet, isSigner: true, isWritable: true },   // owner
+        { pubkey: propertyPda, isSigner: false, isWritable: true },     // property
+        { pubkey: offerPda, isSigner: false, isWritable: true },       // offer
+        { pubkey: escrowPda, isSigner: false, isWritable: true },      // escrow
+        { pubkey: ownerWallet, isSigner: true, isWritable: true },     // owner
+        { pubkey: buyerWallet, isSigner: false, isWritable: true },    // buyer
+        { pubkey: sellerNftAccount, isSigner: false, isWritable: true }, // seller_nft_account
+        { pubkey: escrowNftAccount, isSigner: false, isWritable: true }, // escrow_nft_account
       ],
       data: Buffer.from(dataLayout)
     };
@@ -158,32 +172,23 @@ export default function RespondToOfferModal({
   
   // Handle seller responding to an offer
   const handleResponse = async (accept: boolean) => {
-    // Clear previous errors
-    setErrors({});
-    clearSimulationLogs();
-    
     try {
       setIsSubmitting(true);
+      setErrors({});
       
-      if (!connected || !publicKeyObj) {
-        setErrors({ wallet: "Wallet not connected. Please connect your wallet to continue." });
+      // Check if wallet is connected
+      if (!publicKey) {
+        setErrors({ wallet: "Please connect your wallet first" });
         toast({
           title: "Wallet Error",
-          description: "Wallet not connected. Please connect your wallet to continue."
+          description: "Please connect your wallet first"
         });
         return;
       }
       
-      if (!signTransaction) {
-        setErrors({ wallet: "Wallet doesn't support signing. Please use a compatible wallet." });
-        toast({
-          title: "Wallet Error",
-          description: "Wallet doesn't support signing. Please use a compatible wallet."
-        });
-        return;
-      }
-      
-      if (!token) {
+      // Check if user is authenticated
+      const authToken = getToken();
+      if (!authToken) {
         setErrors({ auth: "You must be logged in to respond to offers" });
         toast({
           title: "Authentication Error",
@@ -192,12 +197,16 @@ export default function RespondToOfferModal({
         return;
       }
       
-      // Make sure the connected wallet is the seller
-      if (!isSeller) {
-        setErrors({ wallet: "You must be the property seller to respond to this offer." });
+      // Verify that the connected wallet is the seller
+      const publicKeyObj = new PublicKey(publicKey);
+      console.log("Comparing Wallets for Offer Response:");
+      console.log("Connected PublicKey:", publicKeyObj.toString());
+      console.log("Offer Seller Wallet:", offer.seller_wallet);
+      if (publicKeyObj.toString() !== offer.seller_wallet) {
+        setErrors({ wallet: "You must be the property seller to respond to this offer" });
         toast({
           title: "Wallet Error",
-          description: "You must be the property seller to respond to this offer."
+          description: "You must be the property seller to respond to this offer"
         });
         return;
       }
@@ -218,15 +227,13 @@ export default function RespondToOfferModal({
       const connection = new Connection(SOLANA_RPC_ENDPOINT, "confirmed");
       const programId = new PublicKey(MARKETPLACE_PROGRAM_ID);
       
-      // Find the marketplace PDA (this needs to be the same logic as in the backend and smart contract)
+      // Find the marketplace PDA
       const marketplaceAuthority = new PublicKey("A9xYe8XDnCRyPdy7B75B5PT7JP9ktLtxi6xMBVa7C4Xd");
       const [marketplacePDA] = PublicKey.findProgramAddressSync(
         [Buffer.from("marketplace"), marketplaceAuthority.toBuffer()],
         programId
       );
       console.log("Marketplace PDA:", marketplacePDA.toString());
-      console.log("Current wallet owner:", walletPublicKeyStr);
-      console.log("Offer buyer wallet:", offer.buyer_wallet);
       
       // Find the property PDA
       const [propertyPDA] = PublicKey.findProgramAddressSync(
@@ -239,8 +246,7 @@ export default function RespondToOfferModal({
       );
       console.log("Property PDA:", propertyPDA.toString());
       
-      // Find the offer PDA - ensure we're using the buyer's wallet from the offer
-      // and NOT the current wallet (which is the property owner)
+      // Find the offer PDA using the buyer's wallet
       const buyerWallet = new PublicKey(offer.buyer_wallet);
       console.log("Using buyer wallet for offer PDA:", buyerWallet.toString());
       
@@ -253,6 +259,37 @@ export default function RespondToOfferModal({
         programId
       );
       console.log("Offer PDA:", offerPDA.toString());
+      
+      // Find the escrow PDA
+      const [escrowPDA] = PublicKey.findProgramAddressSync(
+        [Buffer.from("escrow"), offerPDA.toBuffer()],
+        programId
+      );
+      console.log("Escrow PDA:", escrowPDA.toString());
+      
+      // Get the seller's NFT account
+      const sellerNftAccount = await getNftAccount(publicKeyObj, offer.property_id);
+      if (!sellerNftAccount) {
+        setErrors({ nft: "Could not find seller's NFT account" });
+        toast({
+          title: "NFT Error",
+          description: "Could not find seller's NFT account"
+        });
+        return;
+      }
+      console.log("Seller NFT account:", sellerNftAccount.toString());
+      
+      // Get or create the escrow NFT account
+      const escrowNftAccount = await getOrCreateEscrowNftAccount(escrowPDA, offer.property_id);
+      if (!escrowNftAccount) {
+        setErrors({ nft: "Could not create escrow NFT account" });
+        toast({
+          title: "NFT Error",
+          description: "Could not create escrow NFT account"
+        });
+        return;
+      }
+      console.log("Escrow NFT account:", escrowNftAccount.toString());
       
       // Make sure we're not trying to accept our own offer
       if (buyerWallet.equals(publicKeyObj)) {
@@ -273,12 +310,16 @@ export default function RespondToOfferModal({
         feePayer: publicKeyObj
       });
       
-      // Add the respond_to_offer instruction
+      // Add the respond_to_offer instruction with all required accounts
       const respondToOfferInstruction = createRespondToOfferInstruction(
         programId,
         propertyPDA,
         offerPDA,
+        escrowPDA,
         publicKeyObj,
+        buyerWallet,
+        sellerNftAccount,
+        escrowNftAccount,
         accept
       );
       transaction.add(respondToOfferInstruction);
@@ -297,10 +338,27 @@ export default function RespondToOfferModal({
             displaySimulationLogs(simulationResult.value.logs);
           }
           
-          setErrors({ simulation: `Transaction simulation failed: ${JSON.stringify(simulationResult.value.err)}` });
+          // Extract meaningful error message if possible
+          let errorMessage = "Transaction simulation failed.";
+          if (typeof simulationResult.value.err === 'object' && simulationResult.value.err !== null) {
+            const errJson = JSON.stringify(simulationResult.value.err);
+            console.error("Simulation error details:", errJson);
+            
+            if (errJson.includes("OfferNotActive")) {
+              errorMessage = "This offer is no longer active.";
+            } else if (errJson.includes("InvalidEscrowAccount")) {
+              errorMessage = "Invalid escrow account.";
+            } else if (errJson.includes("InvalidNftAccount")) {
+              errorMessage = "Invalid NFT account.";
+            } else if (errJson.includes("AccountNotSigner")) {
+              errorMessage = "Transaction signing failed. Please try again.";
+            }
+          }
+          
+          setErrors({ simulation: errorMessage });
           toast({
             title: "Simulation Error",
-            description: "Transaction would fail if submitted. See details in console."
+            description: errorMessage
           });
           setIsSubmitting(false);
           return;
@@ -309,6 +367,7 @@ export default function RespondToOfferModal({
         console.log("Transaction simulation successful!");
         if (simulationResult.value.logs) {
           console.log("Simulation logs:", simulationResult.value.logs);
+          displaySimulationLogs(simulationResult.value.logs);
         }
       } catch (simulationError) {
         console.error("Error during transaction simulation:", simulationError);
@@ -337,8 +396,7 @@ export default function RespondToOfferModal({
         const encodedTransaction = Buffer.from(signedTransaction.serialize()).toString('base64');
         
         // Submit transaction to our backend without updating the backend state
-        // This will submit the transaction to the Solana network but not update our database yet
-        const submitResult = await submitTransactionNoUpdate(encodedTransaction, token);
+        const submitResult = await submitTransactionNoUpdate(encodedTransaction, authToken);
         
         if (!submitResult.success) {
           throw new Error(submitResult.message || "Transaction submission failed");
@@ -351,7 +409,7 @@ export default function RespondToOfferModal({
           offer.id,
           accept ? 'accepted' : 'rejected',
           submitResult.signature || "transaction-signature-placeholder",
-          token
+          authToken
         );
         
         console.log("Offer response API result:", offerResponse);
@@ -399,7 +457,6 @@ export default function RespondToOfferModal({
         title: "Error",
         description: "An error occurred while processing your request"
       });
-    } finally {
       setIsSubmitting(false);
     }
   };
@@ -408,131 +465,179 @@ export default function RespondToOfferModal({
   const handleCompletePurchase = async () => {
     try {
       setIsSubmitting(true);
-      
+      setErrors({});
+
       if (!publicKeyObj || !signTransaction || !token) {
-        toast({
-          title: "Error",
-          description: "Wallet not connected or not authenticated"
-        });
-        return;
-      }
-      
-      // Make sure the connected wallet is the buyer
-      if (!isBuyer) {
-        setErrors({ wallet: "You must be the buyer to complete this purchase." });
+        setErrors({ wallet: "Wallet not connected or not authenticated" });
         toast({
           title: "Wallet Error",
-          description: "You must be the buyer to complete this purchase."
+          description: "Please connect your wallet and authenticate"
         });
+        setIsSubmitting(false);
         return;
       }
-      
-      // Make sure we have a seller wallet
-      if (!offer.seller_wallet) {
-        setErrors({ offer: "Missing seller wallet address. Cannot complete transaction." });
+
+      // Verify that the connected wallet is the buyer
+      if (publicKeyObj.toString() !== offer.buyer_wallet) {
+        setErrors({ wallet: "Only the buyer can complete the purchase" });
         toast({
-          title: "Error", 
-          description: "Missing seller wallet address. Cannot complete transaction."
+          title: "Wallet Error",
+          description: "Only the buyer can complete the purchase"
         });
+        setIsSubmitting(false);
         return;
       }
-      
-      // Prepare for SOL transfer
-      const sellerWallet = new PublicKey(offer.seller_wallet);
-      const buyerWallet = publicKeyObj;
-      
-      // Get a fresh blockhash
-      const connection = new Connection(SOLANA_RPC_ENDPOINT);
-      const { blockhash } = await connection.getLatestBlockhash();
-      
-      // Create transaction
+
+      // Verify that we have the seller's wallet address
+      if (!offer.seller_wallet) {
+        setErrors({ wallet: "Seller wallet address not found" });
+        toast({
+          title: "Wallet Error",
+          description: "Seller wallet address not found"
+        });
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Get a fresh blockhash for the transaction
+      const blockhash = await fetchRecentBlockhash();
+
+      // Create Solana connection for transaction simulation
+      const connection = new Connection(SOLANA_RPC_ENDPOINT, "confirmed");
+
+      // Create a new transaction
       const transaction = new Transaction({
-        feePayer: buyerWallet,
-        blockhash,
-        lastValidBlockHeight: 1000000000, // Large value to avoid expiration during testing
+        recentBlockhash: blockhash,
+        feePayer: publicKeyObj
       });
-      
-      // Add SOL transfer instruction
-      const transferInstruction = createSolTransferInstruction(
-        buyerWallet,
-        sellerWallet,
-        offer.amount
-      );
+
+      // Add the SOL transfer instruction
+      const transferInstruction = SystemProgram.transfer({
+        fromPubkey: publicKeyObj,
+        toPubkey: new PublicKey(offer.seller_wallet),
+        lamports: offer.amount
+      });
+
       transaction.add(transferInstruction);
-      
-      // Simulate the transaction
+
+      // Simulate the transaction first to check for errors
       try {
-        const simulation = await connection.simulateTransaction(transaction);
-        if (simulation.value.err) {
-          console.error("Transfer simulation failed:", simulation.value.err);
-          setErrors({ simulation: `Transfer simulation failed: ${JSON.stringify(simulation.value.err)}` });
+        console.log("Simulating transaction before signing...");
+        const simulationResult = await connection.simulateTransaction(transaction);
+
+        if (simulationResult.value.err) {
+          console.error("Transaction simulation failed:", simulationResult.value.err);
+
+          // Display logs from simulation for debugging
+          if (simulationResult.value.logs) {
+            console.log("Simulation logs:", simulationResult.value.logs);
+            displaySimulationLogs(simulationResult.value.logs);
+          }
+
+          // Extract meaningful error message if possible
+          let errorMessage = "Transaction simulation failed.";
+          if (typeof simulationResult.value.err === 'object' && simulationResult.value.err !== null) {
+            const errJson = JSON.stringify(simulationResult.value.err);
+            console.error("Simulation error details:", errJson);
+
+            if (errJson.includes("insufficient funds")) {
+              errorMessage = "Insufficient funds to complete the purchase.";
+            } else if (errJson.includes("AccountNotSigner")) {
+              errorMessage = "Transaction signing failed. Please try again.";
+            }
+          }
+
+          setErrors({ simulation: errorMessage });
           toast({
             title: "Simulation Error",
-            description: "Transaction simulation failed. You may not have enough SOL."
+            description: errorMessage
           });
+          setIsSubmitting(false);
           return;
         }
-        
-        // Display logs if available
-        if (simulation.value.logs) {
-          displaySimulationLogs(simulation.value.logs);
+
+        console.log("Transaction simulation successful!");
+        if (simulationResult.value.logs) {
+          console.log("Simulation logs:", simulationResult.value.logs);
+          displaySimulationLogs(simulationResult.value.logs);
         }
       } catch (simulationError) {
-        console.error("Error simulating transfer:", simulationError);
-        setErrors({ simulation: `Transfer simulation error: ${(simulationError as Error).message}` });
+        console.error("Error during transaction simulation:", simulationError);
+        setErrors({ simulation: `Simulation error: ${(simulationError as Error).message}` });
         toast({
-          title: "Error",
-          description: "Error simulating transfer. Please try again."
+          title: "Simulation Error",
+          description: `Failed to simulate transaction: ${(simulationError as Error).message}`
         });
+        setIsSubmitting(false);
         return;
       }
-      
-      // Sign and send the transaction
-      const signedTx = await signTransaction(transaction);
-      
-      // Submit the signed transaction to Solana
-      const encodedTransaction = Buffer.from(signedTx.serialize()).toString('base64');
-      const submitResult = await submitTransactionNoUpdate(encodedTransaction, token);
-      
-      if (!submitResult.success) {
-        throw new Error(submitResult.message || "Transaction submission failed");
-      }
-      
-      const txSignature = submitResult.signature;
-      console.log("SOL transfer successful with signature:", txSignature);
-      
-      // Now record the sale in our database
-      const result = await recordPropertySale(
-        offer.property_id,
-        offer.seller_wallet,
-        publicKey,
-        offer.amount,
-        txSignature || "buyer-payment-signature",
-        token
-      );
-      
-      if (result.success) {
+
+      // Sign and submit the transaction
+      try {
+        // Sign the transaction
+        console.log("Signing transaction...");
+        const signedTransaction = await signTransaction(transaction);
+
+        // Show message while we process
         toast({
-          title: "Purchase Complete",
-          description: "You have successfully purchased this property!",
+          title: "Signing Transaction",
+          description: "Please wait while we process your payment..."
         });
+
+        // Encode the signed transaction
+        const encodedTransaction = Buffer.from(signedTransaction.serialize()).toString('base64');
+
+        // Submit transaction to our backend without updating the backend state
+        const submitResult = await submitTransactionNoUpdate(encodedTransaction, token);
+
+        if (!submitResult.success) {
+          throw new Error(submitResult.message || "Transaction submission failed");
+        }
+
+        console.log("Transaction submitted to Solana:", submitResult);
+
+        // Now call the backend API to record the sale
+        const saleResponse = await recordPropertySale(
+          offer.property_id,
+          offer.buyer_wallet,
+          offer.seller_wallet,
+          offer.amount,
+          submitResult.signature || "transaction-signature-placeholder",
+          token
+        );
+
+        console.log("Sale recording API result:", saleResponse);
+
+        if (!saleResponse.success) {
+          throw new Error(saleResponse.message || "Failed to record the sale");
+        }
+
+        toast({
+          title: "Purchase Completed",
+          description: "You have successfully completed the purchase!"
+        });
+
         onSuccess();
         onClose();
-      } else {
+
+      } catch (signError) {
+        console.error("Error signing or submitting transaction:", signError);
+        setErrors({ transaction: `Transaction signing error: ${(signError as Error).message}` });
         toast({
-          title: "Warning",
-          description: "Payment completed, but there was an issue recording the sale. Please contact support.",
+          title: "Transaction Error",
+          description: "Failed to sign or submit the transaction. Please try again."
         });
+        setIsSubmitting(false);
+        return;
       }
-      
+
     } catch (err) {
       console.error("Error during purchase completion:", err);
-      setErrors({ unknown: `An error occurred: ${(err as Error).message}` });
+      setErrors({ unknown: `An unknown error occurred: ${(err as Error).message}` });
       toast({
         title: "Error",
-        description: "An error occurred during payment"
+        description: "An error occurred while processing your request"
       });
-    } finally {
       setIsSubmitting(false);
     }
   };
@@ -555,6 +660,54 @@ export default function RespondToOfferModal({
         : "You have accepted this offer. Waiting for buyer to complete the purchase.";
     }
     return "Review and respond to the offer for your property";
+  };
+
+  // Helper function to get the NFT account for a property
+  const getNftAccount = async (owner: PublicKey, propertyId: string): Promise<PublicKey | null> => {
+    try {
+      // Get all token accounts owned by the owner
+      const tokenAccounts = await connection.getParsedTokenAccountsByOwner(owner, {
+        programId: TOKEN_PROGRAM_ID
+      });
+      
+      // Find the token account that contains the property NFT
+      for (const { account } of tokenAccounts.value) {
+        const tokenData = account.data.parsed.info;
+        if (tokenData.mint === propertyId) {
+          return new PublicKey(tokenData.pubkey);
+        }
+      }
+      
+      return null;
+    } catch (error) {
+      console.error("Error getting NFT account:", error);
+      return null;
+    }
+  };
+  
+  // Helper function to get or create the escrow NFT account
+  const getOrCreateEscrowNftAccount = async (escrowPda: PublicKey, propertyId: string): Promise<PublicKey | null> => {
+    try {
+      // First try to find an existing escrow NFT account
+      const tokenAccounts = await connection.getParsedTokenAccountsByOwner(escrowPda, {
+        programId: TOKEN_PROGRAM_ID
+      });
+      
+      // Find the token account that contains the property NFT
+      for (const { account } of tokenAccounts.value) {
+        const tokenData = account.data.parsed.info;
+        if (tokenData.mint === propertyId) {
+          return new PublicKey(tokenData.pubkey);
+        }
+      }
+      
+      // If no existing account found, create a new one
+      // This will be handled by the program when accepting the offer
+      return null;
+    } catch (error) {
+      console.error("Error getting or creating escrow NFT account:", error);
+      return null;
+    }
   };
 
   return (
