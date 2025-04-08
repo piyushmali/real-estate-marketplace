@@ -13,7 +13,7 @@ import { getAssociatedTokenAddress, createAssociatedTokenAccountInstruction, TOK
 import { WalletNotConnectedError } from '@solana/wallet-adapter-base';
 
 // Define constants
-const MARKETPLACE_PROGRAM_ID = "BdSKkquiFKRqxbXYC3Jufz9K59xisZ33VNbyaigkStW6";
+const MARKETPLACE_PROGRAM_ID = "E7v7RResymJU5XvvPA9uwxGSEEsdSE6XvaP7BTV2GGoQ";
 const SOLANA_RPC_ENDPOINT = import.meta.env.VITE_SOLANA_RPC_URL || "https://api.devnet.solana.com";
 
 interface ExecuteSaleModalProps {
@@ -137,7 +137,7 @@ export default function ExecuteSaleModal({
     sellerWallet: string
   ) => {
     // Find the marketplace authority - this would be specific to your deployment
-    const marketplaceAuthority = new PublicKey("13EySfdhQL6b7dxzJnw73C33cRUnX1NjPBWEP1gkU43C");
+    const marketplaceAuthority = new PublicKey("A9xYe8XDnCRyPdy7B75B5PT7JP9ktLtxi6xMBVa7C4Xd");
     
     // Derive marketplace PDA
     const [marketplacePDA] = PublicKey.findProgramAddressSync(

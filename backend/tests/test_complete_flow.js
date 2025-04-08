@@ -14,10 +14,10 @@ const JWT_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJIdEdYY3VuYlBV
 const API_URL = "http://127.0.0.1:8080";
 
 // Program ID
-const PROGRAM_ID = new PublicKey("BdSKkquiFKRqxbXYC3Jufz9K59xisZ33VNbyaigkStW6");
+const PROGRAM_ID = new PublicKey("E7v7RResymJU5XvvPA9uwxGSEEsdSE6XvaP7BTV2GGoQ");
 
 // Marketplace authority
-const MARKETPLACE_AUTHORITY = new PublicKey("13EySfdhQL6b7dxzJnw73C33cRUnX1NjPBWEP1gkU43C");
+const MARKETPLACE_AUTHORITY = new PublicKey("A9xYe8XDnCRyPdy7B75B5PT7JP9ktLtxi6xMBVa7C4Xd");
 
 // Property metadata for testing
 const propertyMetadata = {

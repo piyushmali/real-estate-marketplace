@@ -2,7 +2,7 @@ const { Connection, PublicKey } = require('@solana/web3.js');
 const bs58 = require('bs58');
 
 // Program ID - your actual program ID from the blockchain
-const PROGRAM_ID = new PublicKey("BdSKkquiFKRqxbXYC3Jufz9K59xisZ33VNbyaigkStW6");
+const PROGRAM_ID = new PublicKey("E7v7RResymJU5XvvPA9uwxGSEEsdSE6XvaP7BTV2GGoQ");
 
 async function checkAllMarketplaces() {
   try {
@@ -28,7 +28,7 @@ async function checkAllMarketplaces() {
     // List of wallets to try
     const wallets = [
       'HtGXcunbPUU54wMa9ZiXdMXvv1b5ppT7DeFLJWdtH7Lr',
-      '13EySfdhQL6b7dxzJnw73C33cRUnX1NjPBWEP1gkU43C'
+      'A9xYe8XDnCRyPdy7B75B5PT7JP9ktLtxi6xMBVa7C4Xd'
     ];
     
     // Option 2: "marketplace" + wallet pubkey (most common)

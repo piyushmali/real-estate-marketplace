@@ -483,7 +483,7 @@ export function PropertyForm({ onClose }: PropertyFormProps) {
       console.log("Finding marketplace PDA");
       
       // Find marketplace PDA - hardcoded authority for simplicity
-      const marketplaceAuthority = new PublicKey("13EySfdhQL6b7dxzJnw73C33cRUnX1NjPBWEP1gkU43C");
+      const marketplaceAuthority = new PublicKey("A9xYe8XDnCRyPdy7B75B5PT7JP9ktLtxi6xMBVa7C4Xd");
       const [marketplacePDA] = PublicKey.findProgramAddressSync(
         [Buffer.from("marketplace"), marketplaceAuthority.toBuffer()],
         program.programId

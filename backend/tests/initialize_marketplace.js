@@ -3,7 +3,7 @@ const bs58 = require('bs58');
 const BN = require('bn.js');
 
 // Program ID - your actual program ID
-const PROGRAM_ID = new PublicKey("BdSKkquiFKRqxbXYC3Jufz9K59xisZ33VNbyaigkStW6");
+const PROGRAM_ID = new PublicKey("E7v7RResymJU5XvvPA9uwxGSEEsdSE6XvaP7BTV2GGoQ");
 
 // Hardcoded values for testing - NEVER USE IN PRODUCTION
 const SECRET_KEY = "3ZYfJwhSeJc53nynauea3xxAnB6vNAQNKAqBjYuvrjEMKMckSnBUtqMVDmxEsz8qXR3Jm8ZHg5YoRgxNWJZuVgs4";

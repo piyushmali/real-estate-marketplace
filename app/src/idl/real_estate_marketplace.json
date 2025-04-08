@@ -1,5 +1,5 @@
 {
-  "address": "BdSKkquiFKRqxbXYC3Jufz9K59xisZ33VNbyaigkStW6",
+  "address": "E7v7RResymJU5XvvPA9uwxGSEEsdSE6XvaP7BTV2GGoQ",
   "metadata": {
     "name": "real_estate_marketplace",
     "version": "0.1.0",
@@ -31,6 +31,29 @@
         {
           "name": "offer",
           "writable": true
+        },
+        {
+          "name": "escrow",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  115,
+                  99,
+                  114,
+                  111,
+                  119
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "offer"
+              }
+            ]
+          }
         },
         {
           "name": "transaction_history",
@@ -72,22 +95,14 @@
         },
         {
           "name": "seller",
-          "signer": true
-        },
-        {
-          "name": "buyer_token_account",
           "writable": true
         },
         {
-          "name": "seller_token_account",
+          "name": "marketplace_authority",
           "writable": true
         },
         {
-          "name": "marketplace_fee_account",
-          "writable": true
-        },
-        {
-          "name": "seller_nft_account",
+          "name": "escrow_nft_account",
           "writable": true
         },
         {
@@ -95,15 +110,8 @@
           "writable": true
         },
         {
-          "name": "property_nft_mint"
-        },
-        {
           "name": "token_program",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
-        },
-        {
-          "name": "associated_token_program",
-          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
         },
         {
           "name": "system_program",
@@ -328,6 +336,29 @@
           }
         },
         {
+          "name": "escrow",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  115,
+                  99,
+                  114,
+                  111,
+                  119
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "offer"
+              }
+            ]
+          }
+        },
+        {
           "name": "buyer",
           "writable": true,
           "signer": true
@@ -374,9 +405,29 @@
           "writable": true
         },
         {
+          "name": "escrow",
+          "writable": true
+        },
+        {
           "name": "owner",
           "writable": true,
           "signer": true
+        },
+        {
+          "name": "buyer",
+          "writable": true
+        },
+        {
+          "name": "seller_nft_account",
+          "writable": true
+        },
+        {
+          "name": "escrow_nft_account",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         }
       ],
       "args": [
@@ -439,6 +490,19 @@
     }
   ],
   "accounts": [
+    {
+      "name": "Escrow",
+      "discriminator": [
+        31,
+        213,
+        123,
+        187,
+        186,
+        22,
+        218,
+        155
+      ]
+    },
     {
       "name": "Marketplace",
       "discriminator": [
@@ -517,6 +581,19 @@
         45,
         157,
         87
+      ]
+    },
+    {
+      "name": "OfferExpired",
+      "discriminator": [
+        50,
+        165,
+        49,
+        70,
+        32,
+        186,
+        35,
+        229
       ]
     },
     {
@@ -672,9 +749,60 @@
       "code": 6019,
       "name": "InvalidNFTMint",
       "msg": "Invalid NFT mint"
+    },
+    {
+      "code": 6020,
+      "name": "EscrowMismatch",
+      "msg": "Escrow account mismatch"
+    },
+    {
+      "code": 6021,
+      "name": "NFTNotInEscrow",
+      "msg": "NFT not held in escrow"
+    },
+    {
+      "code": 6022,
+      "name": "InsufficientEscrowFunds",
+      "msg": "Insufficient funds in escrow"
     }
   ],
   "types": [
+    {
+      "name": "Escrow",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "offer",
+            "type": "pubkey"
+          },
+          {
+            "name": "property",
+            "type": "pubkey"
+          },
+          {
+            "name": "buyer",
+            "type": "pubkey"
+          },
+          {
+            "name": "seller",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "nft_held",
+            "type": "bool"
+          },
+          {
+            "name": "created_at",
+            "type": "i64"
+          }
+        ]
+      }
+    },
     {
       "name": "Marketplace",
       "type": {
@@ -731,6 +859,10 @@
           {
             "name": "expiration_time",
             "type": "i64"
+          },
+          {
+            "name": "escrow",
+            "type": "pubkey"
           }
         ]
       }
@@ -782,6 +914,38 @@
           },
           {
             "name": "buyer",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "OfferExpired",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "offer",
+            "type": "pubkey"
+          },
+          {
+            "name": "property",
+            "type": "pubkey"
+          },
+          {
+            "name": "buyer",
+            "type": "pubkey"
+          },
+          {
+            "name": "seller",
             "type": "pubkey"
           },
           {

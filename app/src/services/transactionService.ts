@@ -1,33 +1,24 @@
 import axios from 'axios';
+import { PublicKey } from '@solana/web3.js';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8080';
+const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8080';
+const PROGRAM_ID = new PublicKey('E7v7RResymJU5XvvPA9uwxGSEEsdSE6XvaP7BTV2GGoQ');
 
 // Function to simulate a transaction using our backend API
 export const simulateTransaction = async (
-  transaction: string,
+  transaction: string | Uint8Array,
   token: string
-) => {
+): Promise<any> => {
   try {
-    console.log("Simulating transaction with token:", token ? "Token exists" : "No token");
-    
-    // Convert transaction to base64 if it's not already in that format
-    let serializedTransaction = transaction;
-    
-    // Check if input looks like base64 already 
-    if (!/^[A-Za-z0-9+/=]+$/.test(transaction)) {
-      console.log("Transaction doesn't appear to be base64, attempting to encode it");
-      try {
-        // Try to convert to base64
-        serializedTransaction = Buffer.from(transaction).toString('base64');
-      } catch (error) {
-        console.error("Failed to encode transaction to base64:", error);
-      }
-    }
-    
+    const transactionBase64 = typeof transaction === 'string' 
+      ? transaction 
+      : Buffer.from(transaction).toString('base64');
+
     const response = await axios.post(
       `${API_URL}/api/transactions/simulate`,
       {
-        serialized_transaction: serializedTransaction,
+        transaction: transactionBase64,
+        program_id: PROGRAM_ID.toString()
       },
       {
         headers: {
@@ -36,76 +27,28 @@ export const simulateTransaction = async (
         },
       }
     );
-    
-    console.log("Transaction simulation result:", response.data);
-    return {
-      success: true,
-      logs: response.data.logs || [],
-      ...response.data
-    };
+    return response.data;
   } catch (error) {
     console.error('Error simulating transaction:', error);
-    
-    // More detailed error logging
-    if (axios.isAxiosError(error) && error.response) {
-      console.error('Response status:', error.response.status);
-      console.error('Response data:', error.response.data);
-      
-      return {
-        success: false,
-        logs: error.response.data?.logs || [],
-        error: error.response.data?.error || error.message
-      };
-    }
-    
-    return {
-      success: false,
-      logs: [],
-      error: error instanceof Error ? error.message : 'Unknown error during simulation'
-    };
+    throw error;
   }
 };
 
-export const submitTransactionNoUpdate = async (
-  transaction: string, 
-  token: string, 
-  metadata: string = JSON.stringify({})
-) => {
+export const submitTransaction = async (
+  transaction: string | Uint8Array,
+  token: string
+): Promise<string> => {
   try {
-    console.log("Submitting transaction with token:", token ? "Token exists" : "No token");
-    console.log("Transaction input:", transaction.substring(0, 100) + "...");
-    
-    // Convert transaction to base64 if it's not already in that format
-    let serializedTransaction = transaction;
-    
-    // Check if input looks like base64 already 
-    if (!/^[A-Za-z0-9+/=]+$/.test(transaction)) {
-      console.log("Transaction doesn't appear to be base64, attempting to encode it");
-      try {
-        // Try to convert to base64
-        serializedTransaction = Buffer.from(transaction).toString('base64');
-      } catch (error) {
-        console.error("Failed to encode transaction to base64:", error);
-      }
-    }
-    
-    console.log("Sending serialized_transaction data of length:", serializedTransaction.length);
-    
-    // Add the metadata field as required by the API
-    const payload = {
-      serialized_transaction: serializedTransaction,
-      metadata
-    };
-    
-    console.log("Sending payload to backend:", {
-      endpoint: `${API_URL}/api/transactions/submit-no-update`,
-      payloadSize: JSON.stringify(payload).length,
-      hasToken: !!token
-    });
-    
+    const transactionBase64 = typeof transaction === 'string' 
+      ? transaction 
+      : Buffer.from(transaction).toString('base64');
+
     const response = await axios.post(
-      `${API_URL}/api/transactions/submit-no-update`,
-      payload,
+      `${API_URL}/api/transactions/submit`,
+      {
+        transaction: transactionBase64,
+        program_id: PROGRAM_ID.toString()
+      },
       {
         headers: {
           'Content-Type': 'application/json',
@@ -113,48 +56,53 @@ export const submitTransactionNoUpdate = async (
         },
       }
     );
-    
-    console.log("Transaction submission successful:", response.data);
-    
-    // Add success flag if it doesn't exist in the response
-    const responseWithSuccess = {
-      ...response.data,
-      success: true, // Force success to be true if we got here (no errors thrown)
-    };
-    
-    return responseWithSuccess;
+    return response.data.signature;
   } catch (error) {
     console.error('Error submitting transaction:', error);
-    
-    // More detailed error logging
-    if (axios.isAxiosError(error) && error.response) {
-      console.error('Response status:', error.response.status);
-      console.error('Response data:', error.response.data);
-    }
-    
-    // Return a formatted error response instead of throwing
-    return {
-      success: false,
-      message: axios.isAxiosError(error) && error.response?.data?.message 
-        ? error.response.data.message 
-        : (error instanceof Error ? error.message : 'Unknown error submitting transaction'),
-      error: error
-    };
+    throw error;
   }
 };
 
-export const getRecentBlockhash = async (token: string) => {
+export const submitTransactionNoUpdate = async (
+  transaction: string | Uint8Array,
+  token: string
+): Promise<string> => {
+  try {
+    const transactionBase64 = typeof transaction === 'string' 
+      ? transaction 
+      : Buffer.from(transaction).toString('base64');
+
+    const response = await axios.post(
+      `${API_URL}/api/transactions/submit-no-update`,
+      {
+        transaction: transactionBase64,
+        program_id: PROGRAM_ID.toString()
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+      }
+    );
+    return response.data.signature;
+  } catch (error) {
+    console.error('Error submitting transaction:', error);
+    throw error;
+  }
+};
+
+export const getRecentBlockhash = async (token: string): Promise<string> => {
   try {
     const response = await axios.get(
       `${API_URL}/api/blockhash`,
       {
         headers: {
-          'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
       }
     );
-    return response.data;
+    return response.data.blockhash;
   } catch (error) {
     console.error('Error getting recent blockhash:', error);
     throw error;
@@ -163,27 +111,22 @@ export const getRecentBlockhash = async (token: string) => {
 
 export const recordPropertySale = async (
   propertyId: string,
-  sellerWallet: string,
   buyerWallet: string,
-  price: number,
+  sellerWallet: string,
+  amount: number,
   transactionSignature: string,
   token: string
-) => {
+): Promise<any> => {
   try {
-    console.log(`Recording property sale for property ${propertyId}`);
-    console.log(`Seller: ${sellerWallet}`);
-    console.log(`Buyer: ${buyerWallet}`);
-    console.log(`Price: ${price}`);
-    console.log(`Transaction signature: ${transactionSignature}`);
-    
     const response = await axios.post(
       `${API_URL}/api/transactions/record-sale`,
       {
         property_id: propertyId,
-        seller_wallet: sellerWallet,
         buyer_wallet: buyerWallet,
-        price: price,
-        transaction_signature: transactionSignature
+        seller_wallet: sellerWallet,
+        amount: amount,
+        transaction_signature: transactionSignature,
+        program_id: PROGRAM_ID.toString()
       },
       {
         headers: {
@@ -192,8 +135,6 @@ export const recordPropertySale = async (
         },
       }
     );
-    
-    console.log("Property sale recorded successfully:", response.data);
     return response.data;
   } catch (error) {
     console.error('Error recording property sale:', error);
@@ -201,55 +142,39 @@ export const recordPropertySale = async (
   }
 };
 
-export const getTransactionHistory = async (token: string) => {
+export const getTransactionHistory = async (token: string): Promise<any[]> => {
   try {
-    console.log("Fetching transaction history");
-    
     const response = await axios.get(
       `${API_URL}/api/transactions`,
       {
         headers: {
-          'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
       }
     );
-    
-    console.log("Transaction history fetched:", response.data);
-    return response.data.transactions || [];
+    return response.data.transactions;
   } catch (error) {
-    console.error('Error fetching transaction history:', error);
+    console.error('Error getting transaction history:', error);
     throw error;
   }
 };
 
 export const completeNFTTransfer = async (
-  transactionSignature: string, 
   propertyId: string,
-  nftMint: string,
-  sellerWallet: string,
   buyerWallet: string,
-  offerId: string,
-  amount: number,
+  sellerWallet: string,
+  transactionSignature: string,
   token: string
-) => {
+): Promise<any> => {
   try {
-    console.log(`Requesting backend to complete NFT transfer for property ${propertyId}`);
-    console.log(`Transaction signature: ${transactionSignature}`);
-    console.log(`NFT Mint: ${nftMint}`);
-    console.log(`Seller: ${sellerWallet}`);
-    console.log(`Buyer: ${buyerWallet}`);
-    
     const response = await axios.post(
       `${API_URL}/api/transactions/complete-transfer`,
       {
-        transaction_signature: transactionSignature,
         property_id: propertyId,
-        nft_mint: nftMint,
-        seller_wallet: sellerWallet,
         buyer_wallet: buyerWallet,
-        offer_id: offerId,
-        amount: amount
+        seller_wallet: sellerWallet,
+        transaction_signature: transactionSignature,
+        program_id: PROGRAM_ID.toString()
       },
       {
         headers: {
@@ -258,11 +183,9 @@ export const completeNFTTransfer = async (
         },
       }
     );
-    
-    console.log("NFT transfer completion request sent:", response.data);
     return response.data;
   } catch (error) {
-    console.error('Error requesting NFT transfer completion:', error);
+    console.error('Error completing NFT transfer:', error);
     throw error;
   }
 };
@@ -273,19 +196,16 @@ export const updatePropertyOwnership = async (
   offerId: string,
   transactionSignature: string,
   token: string
-) => {
+): Promise<any> => {
   try {
-    console.log(`Updating property ownership for property ${propertyId}`);
-    console.log(`New owner: ${newOwner}`);
-    console.log(`Transaction signature: ${transactionSignature}`);
-    
     const response = await axios.post(
       `${API_URL}/api/properties/update-ownership`,
       {
         property_id: propertyId,
         new_owner: newOwner,
         offer_id: offerId,
-        transaction_signature: transactionSignature
+        transaction_signature: transactionSignature,
+        program_id: PROGRAM_ID.toString()
       },
       {
         headers: {
@@ -294,8 +214,6 @@ export const updatePropertyOwnership = async (
         },
       }
     );
-    
-    console.log("Property ownership updated successfully:", response.data);
     return response.data;
   } catch (error) {
     console.error('Error updating property ownership:', error);

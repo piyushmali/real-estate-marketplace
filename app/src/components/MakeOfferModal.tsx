@@ -11,7 +11,7 @@ import { PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL, Connection } f
 import { BN } from '@project-serum/anchor';
 
 // Define constants
-const MARKETPLACE_PROGRAM_ID = "BdSKkquiFKRqxbXYC3Jufz9K59xisZ33VNbyaigkStW6";
+const MARKETPLACE_PROGRAM_ID = "E7v7RResymJU5XvvPA9uwxGSEEsdSE6XvaP7BTV2GGoQ";
 const SOLANA_RPC_ENDPOINT = "https://api.devnet.solana.com";
 
 interface MakeOfferModalProps {
@@ -229,7 +229,7 @@ export default function MakeOfferModal({
       const programId = new PublicKey(MARKETPLACE_PROGRAM_ID);
       
       // Find the marketplace PDA
-      const marketplaceAuthority = new PublicKey("13EySfdhQL6b7dxzJnw73C33cRUnX1NjPBWEP1gkU43C");
+      const marketplaceAuthority = new PublicKey("A9xYe8XDnCRyPdy7B75B5PT7JP9ktLtxi6xMBVa7C4Xd");
       const [marketplacePDA] = PublicKey.findProgramAddressSync(
         [Buffer.from("marketplace"), marketplaceAuthority.toBuffer()],
         programId
@@ -319,72 +319,55 @@ export default function MakeOfferModal({
               errorMessage = "You cannot make an offer on your own property.";
             } else if (errJson.includes("InvalidOfferAmount")) {
               errorMessage = "Invalid offer amount.";
+            } else if (errJson.includes("AccountNotSigner")) {
+              errorMessage = "Transaction signing failed. Please try again.";
             }
           }
           
-          // Ask if user wants to proceed despite simulation error
-          const proceedDespiteError = window.confirm(
-            `Simulation warning: ${errorMessage}\n\n` +
-            "This transaction may fail when submitted to the blockchain.\n\n" +
-            "Do you want to try submitting it anyway?"
-          );
+          setErrors({ transaction: errorMessage });
+          toast({
+            title: "Transaction Error",
+            description: errorMessage,
+            variant: "destructive"
+          });
+          setIsSubmitting(false);
+          return;
+        }
+
+        // If simulation was successful, send and sign the transaction
+        console.log("Sending transaction for signing...");
+        try {
+          const signedTx = await phantomProvider.signAndSendTransaction(transaction);
+          console.log("Transaction signed and sent:", signedTx.signature);
           
-          if (!proceedDespiteError) {
-            setIsSubmitting(false);
-            setErrors({ transaction: errorMessage });
-            return;
+          // Wait for confirmation
+          const confirmation = await connection.confirmTransaction(signedTx.signature);
+          console.log("Transaction confirmed:", confirmation);
+          
+          if (confirmation.value.err) {
+            throw new Error("Transaction failed to confirm");
           }
+          
+          toast({
+            title: "Success",
+            description: "Your offer has been submitted successfully!",
+            variant: "default"
+          });
+          
+          onSuccess();
+          onClose();
+        } catch (signError) {
+          console.error("Error signing transaction:", signError);
+          setErrors({ transaction: "Failed to sign transaction. Please try again." });
+          toast({
+            title: "Transaction Error",
+            description: "Failed to sign transaction. Please try again.",
+            variant: "destructive"
+          });
         }
       } catch (simulationError) {
         console.error("Error during transaction simulation:", simulationError);
         // Continue despite simulation error - this might be a technical issue rather than a logical one
-      }
-      
-      // User confirmed to proceed, or simulation was successful
-      console.log("Transaction built, requesting signing from Phantom...");
-      
-      // Use Phantom's signTransaction directly
-      const signedTransaction = await phantomProvider.signTransaction(transaction);
-      console.log("Transaction signed successfully by Phantom");
-      
-      const serializedTransaction = signedTransaction.serialize();
-      console.log("Transaction serialized, size:", serializedTransaction.length, "bytes");
-      
-      // Submit the signed transaction to the backend
-      console.log("Submitting signed transaction to backend...");
-      
-      // Create metadata object for database
-      const metadataObj = {
-        offer_id: offer.id,
-        amount: Number(amount),
-        property_id: propertyId
-      };
-      
-      console.log("Transaction metadata:", JSON.stringify(metadataObj, null, 2));
-      
-      // Submit to the backend for processing
-      const result = await submitTransactionNoUpdate(
-        Buffer.from(serializedTransaction).toString('base64'),
-        token,
-        JSON.stringify(metadataObj)
-      );
-
-      console.log("Transaction submission result:", result);
-
-      if (result && result.signature) {
-        toast({
-          title: "Success",
-          description: `Offer created and transaction submitted with signature: ${result.signature.substring(0, 12)}...`,
-        });
-        onSuccess();
-        onClose();
-      } else {
-        toast({
-          title: "Warning",
-          description: "Transaction completed but no signature was returned. Your offer was created.",
-        });
-        onSuccess();
-      onClose();
       }
     } catch (error) {
       console.error("Error creating offer:", error);

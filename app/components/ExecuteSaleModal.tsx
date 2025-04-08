@@ -89,9 +89,9 @@ const createTransaction = async () => {
     const [marketplacePDA] = await PublicKey.findProgramAddress(
       [
         Buffer.from("marketplace"),
-        new PublicKey("BdSKkquiFKRqxbXYC3Jufz9K59xisZ33VNbyaigkStW6").toBuffer(),
+        new PublicKey("E7v7RResymJU5XvvPA9uwxGSEEsdSE6XvaP7BTV2GGoQ").toBuffer(),
       ],
-      new PublicKey("BdSKkquiFKRqxbXYC3Jufz9K59xisZ33VNbyaigkStW6")
+      new PublicKey("E7v7RResymJU5XvvPA9uwxGSEEsdSE6XvaP7BTV2GGoQ")
     );
     console.log("Marketplace PDA:", marketplacePDA.toString());
 
@@ -102,7 +102,7 @@ const createTransaction = async () => {
         marketplacePDA.toBuffer(),
         Buffer.from(property?.property_id || ""),
       ],
-      new PublicKey("BdSKkquiFKRqxbXYC3Jufz9K59xisZ33VNbyaigkStW6")
+      new PublicKey("E7v7RResymJU5XvvPA9uwxGSEEsdSE6XvaP7BTV2GGoQ")
     );
     console.log("Property PDA:", propertyPDA.toString());
 
@@ -113,7 +113,7 @@ const createTransaction = async () => {
         propertyPDA.toBuffer(),
         new PublicKey(offer.buyer_wallet).toBuffer(),
       ],
-      new PublicKey("BdSKkquiFKRqxbXYC3Jufz9K59xisZ33VNbyaigkStW6")
+      new PublicKey("E7v7RResymJU5XvvPA9uwxGSEEsdSE6XvaP7BTV2GGoQ")
     );
     console.log("Offer PDA:", offerPDA.toString());
 
@@ -129,7 +129,7 @@ const createTransaction = async () => {
         propertyPDA.toBuffer(),
         Buffer.from([(transactionCount + 1) & 0xff]),
       ],
-      new PublicKey("BdSKkquiFKRqxbXYC3Jufz9K59xisZ33VNbyaigkStW6")
+      new PublicKey("E7v7RResymJU5XvvPA9uwxGSEEsdSE6XvaP7BTV2GGoQ")
     );
     console.log("Transaction History PDA:", transactionHistoryPDA.toString());
 
@@ -200,7 +200,7 @@ const createTransaction = async () => {
     transaction.add(transferSolInstruction);
 
     // Add marketplace fee transfer
-    const marketplaceFeePubkey = new PublicKey("13EySfdhQL6b7dxzJnw73C33cRUnX1NjPBWEP1gkU43C");
+    const marketplaceFeePubkey = new PublicKey("A9xYe8XDnCRyPdy7B75B5PT7JP9ktLtxi6xMBVa7C4Xd");
     const feeTransferInstruction = SystemProgram.transfer({
       fromPubkey: buyer,
       toPubkey: marketplaceFeePubkey,

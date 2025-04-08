@@ -1,9 +1,17 @@
 import axios from 'axios';
 import { Offer } from '../types/offer';
+import { PublicKey } from '@solana/web3.js';
 
 const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8080';
+const PROGRAM_ID = new PublicKey('E7v7RResymJU5XvvPA9uwxGSEEsdSE6XvaP7BTV2GGoQ');
 
-export const createOffer = async (propertyId: string, amount: number, expirationDays: number, token: string): Promise<Offer> => {
+export const createOffer = async (
+  propertyId: string, 
+  amount: number, 
+  expirationDays: number, 
+  token: string,
+  buyerWallet: string
+): Promise<Offer> => {
   try {
     console.log("Creating offer with token:", token ? "Token exists" : "No token");
     console.log(`Creating offer for ${propertyId} with amount ${amount} SOL and expiration ${expirationDays} days`);
@@ -17,8 +25,10 @@ export const createOffer = async (propertyId: string, amount: number, expiration
       `${API_URL}/api/offers`,
       {
         property_id: propertyId,
-        amount: amountInLamports, // Send amount in lamports to match backend expectation
+        amount: amountInLamports,
         expiration_days: expirationDays,
+        buyer_wallet: buyerWallet,
+        program_id: PROGRAM_ID.toString()
       },
       {
         headers: {
@@ -86,7 +96,8 @@ export const respondToOffer = async (
   offerId: string, 
   status: 'accepted' | 'rejected', 
   transactionSignature: string | null,
-  token: string
+  token: string,
+  sellerWallet: string
 ): Promise<any> => {
   try {
     console.log(`Responding to offer ${offerId} with status: ${status}`);
@@ -95,7 +106,9 @@ export const respondToOffer = async (
       `${API_URL}/api/offers/${offerId}/respond`,
       {
         status,
-        transaction_signature: transactionSignature
+        transaction_signature: transactionSignature,
+        seller_wallet: sellerWallet,
+        program_id: PROGRAM_ID.toString()
       },
       {
         headers: {

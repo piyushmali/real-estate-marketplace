@@ -55,7 +55,7 @@ const mockProperties: Property[] = [
     bedrooms: 3,
     bathrooms: 2,
     metadata_uri: "https://picsum.photos/400/300?random=1",
-    owner: "13EySfdhQL6b7dxzJnw73C33cRUnX1NjPBWEP1gkU43C"
+    owner: "A9xYe8XDnCRyPdy7B75B5PT7JP9ktLtxi6xMBVa7C4Xd"
   },
   {
     property_id: "PROP-002",
@@ -65,7 +65,7 @@ const mockProperties: Property[] = [
     bedrooms: 4,
     bathrooms: 3,
     metadata_uri: "https://picsum.photos/400/300?random=2",
-    owner: "13EySfdhQL6b7dxzJnw73C33cRUnX1NjPBWEP1gkU43C"
+    owner: "A9xYe8XDnCRyPdy7B75B5PT7JP9ktLtxi6xMBVa7C4Xd"
   }
 ];
 

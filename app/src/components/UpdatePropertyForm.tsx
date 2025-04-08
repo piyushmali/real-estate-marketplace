@@ -26,7 +26,7 @@ interface Property {
 // Constants for blockchain interaction
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
 const SOLANA_RPC_ENDPOINT = "https://api.devnet.solana.com";
-const MARKETPLACE_PROGRAM_ID = "BdSKkquiFKRqxbXYC3Jufz9K59xisZ33VNbyaigkStW6";
+const MARKETPLACE_PROGRAM_ID = "E7v7RResymJU5XvvPA9uwxGSEEsdSE6XvaP7BTV2GGoQ";
 
 // Import the IDL for reference
 import idlJsonRaw from "@/idl/real_estate_marketplace.json";
@@ -374,12 +374,12 @@ export function UpdatePropertyForm({ property, onClose, onSuccess }: UpdatePrope
       }
       
       // Find marketplace PDA using fixed marketplace authority
-      const marketplaceAuthority = new PublicKey("13EySfdhQL6b7dxzJnw73C33cRUnX1NjPBWEP1gkU43C");
+      const marketplaceAuthority = new PublicKey("A9xYe8XDnCRyPdy7B75B5PT7JP9ktLtxi6xMBVa7C4Xd");
       console.log("Using marketplace authority:", marketplaceAuthority.toString());
       
       // Try multiple authorities if needed
       const possibleAuthorities = [
-        "13EySfdhQL6b7dxzJnw73C33cRUnX1NjPBWEP1gkU43C", // Default value
+        "A9xYe8XDnCRyPdy7B75B5PT7JP9ktLtxi6xMBVa7C4Xd", // Default value
         "97FYGBwDi8vGwJv9NLREgSNNqmDM6kBkGfWEZsJ27H7K", 
         "BWRHBY5p1PLYDp2TxuTf5MvyQ2osJGa3NvPyNQTuPbUK",
         "5hAKEi9mYmnXxKZ8D5r4qQcT3ZyEqCej9SBwfSm1CZiY",
@@ -1033,7 +1033,7 @@ export function UpdatePropertyForm({ property, onClose, onSuccess }: UpdatePrope
       
       // Try different marketplace authorities to find the correct one
       const possibleAuthorities = [
-        "13EySfdhQL6b7dxzJnw73C33cRUnX1NjPBWEP1gkU43C", // Current hardcoded value
+        "A9xYe8XDnCRyPdy7B75B5PT7JP9ktLtxi6xMBVa7C4Xd", // Current hardcoded value
         "97FYGBwDi8vGwJv9NLREgSNNqmDM6kBkGfWEZsJ27H7K", // Try another common one from the project
         "BWRHBY5p1PLYDp2TxuTf5MvyQ2osJGa3NvPyNQTuPbUK", // Try another possible one
         "5hAKEi9mYmnXxKZ8D5r4qQcT3ZyEqCej9SBwfSm1CZiY", // Additional possible authority

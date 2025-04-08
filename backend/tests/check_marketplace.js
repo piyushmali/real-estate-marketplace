@@ -2,7 +2,7 @@ const { Connection, PublicKey } = require('@solana/web3.js');
 const bs58 = require('bs58');
 
 // Program ID - your actual program ID from the blockchain
-const PROGRAM_ID = new PublicKey("BdSKkquiFKRqxbXYC3Jufz9K59xisZ33VNbyaigkStW6");
+const PROGRAM_ID = new PublicKey("E7v7RResymJU5XvvPA9uwxGSEEsdSE6XvaP7BTV2GGoQ");
 // Wallet address used to initialize the marketplace
 const WALLET_ADDRESS = "HtGXcunbPUU54wMa9ZiXdMXvv1b5ppT7DeFLJWdtH7Lr";
 

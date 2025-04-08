@@ -13,10 +13,10 @@ import { useWallet } from '@solana/wallet-adapter-react';
 // For this example, we'll just reference it
 
 // YOUR ACTUAL PROGRAM ID
-const PROGRAM_ID = new PublicKey("BdSKkquiFKRqxbXYC3Jufz9K59xisZ33VNbyaigkStW6");
+const PROGRAM_ID = new PublicKey("E7v7RResymJU5XvvPA9uwxGSEEsdSE6XvaP7BTV2GGoQ");
 
 // MARKETPLACE AUTHORITY (whoever initialized the marketplace)
-const MARKETPLACE_AUTHORITY = new PublicKey("13EySfdhQL6b7dxzJnw73C33cRUnX1NjPBWEP1gkU43C");
+const MARKETPLACE_AUTHORITY = new PublicKey("A9xYe8XDnCRyPdy7B75B5PT7JP9ktLtxi6xMBVa7C4Xd");
 
 // Example React component or function
 async function listProperty() {

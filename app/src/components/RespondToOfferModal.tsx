@@ -11,7 +11,7 @@ import { useWallet } from "@/hooks/useWallet";
 import { useAuth } from "@/hooks/useAuth";
 
 // Define constants
-const MARKETPLACE_PROGRAM_ID = "BdSKkquiFKRqxbXYC3Jufz9K59xisZ33VNbyaigkStW6";
+const MARKETPLACE_PROGRAM_ID = "E7v7RResymJU5XvvPA9uwxGSEEsdSE6XvaP7BTV2GGoQ";
 const SOLANA_RPC_ENDPOINT = "https://api.devnet.solana.com";
 
 interface RespondToOfferModalProps {
@@ -219,7 +219,7 @@ export default function RespondToOfferModal({
       const programId = new PublicKey(MARKETPLACE_PROGRAM_ID);
       
       // Find the marketplace PDA (this needs to be the same logic as in the backend and smart contract)
-      const marketplaceAuthority = new PublicKey("13EySfdhQL6b7dxzJnw73C33cRUnX1NjPBWEP1gkU43C");
+      const marketplaceAuthority = new PublicKey("A9xYe8XDnCRyPdy7B75B5PT7JP9ktLtxi6xMBVa7C4Xd");
       const [marketplacePDA] = PublicKey.findProgramAddressSync(
         [Buffer.from("marketplace"), marketplaceAuthority.toBuffer()],
         programId
