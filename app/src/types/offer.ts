@@ -8,4 +8,5 @@ export interface Offer {
   created_at: string;
   updated_at: string;
   expiration_time: string;
+  propertyOwner: string;
 } 
