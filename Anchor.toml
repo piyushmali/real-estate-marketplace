@@ -6,7 +6,7 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
-real_estate_marketplace = "BdSKkquiFKRqxbXYC3Jufz9K59xisZ33VNbyaigkStW6"
+real_estate_marketplace = "E7v7RResymJU5XvvPA9uwxGSEEsdSE6XvaP7BTV2GGoQ"
 
 [programs.localnet]
 real_estate_marketplace = "BdSKkquiFKRqxbXYC3Jufz9K59xisZ33VNbyaigkStW6"

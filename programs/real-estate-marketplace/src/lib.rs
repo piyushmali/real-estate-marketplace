@@ -7,7 +7,7 @@ use anchor_spl::{
 };
 use std::mem::size_of;
 
-declare_id!("BdSKkquiFKRqxbXYC3Jufz9K59xisZ33VNbyaigkStW6");
+declare_id!("E7v7RResymJU5XvvPA9uwxGSEEsdSE6XvaP7BTV2GGoQ");
 
 #[program]
 pub mod real_estate_marketplace {
@@ -189,6 +189,7 @@ pub mod real_estate_marketplace {
     ) -> Result<()> {
         let property = &ctx.accounts.property;
         let offer = &mut ctx.accounts.offer;
+        let escrow = &mut ctx.accounts.escrow;
         let clock = Clock::get()?;
 
         require!(property.is_active, ErrorCode::PropertyNotActive);
@@ -198,6 +199,23 @@ pub mod real_estate_marketplace {
             ErrorCode::InvalidExpirationTime
         );
 
+        // Transfer SOL from buyer to escrow account
+        let transfer_instruction = anchor_lang::solana_program::system_instruction::transfer(
+            &ctx.accounts.buyer.key(),
+            &escrow.key(),
+            offer_amount,
+        );
+
+        anchor_lang::solana_program::program::invoke(
+            &transfer_instruction,
+            &[
+                ctx.accounts.buyer.to_account_info(),
+                escrow.to_account_info(),
+                ctx.accounts.system_program.to_account_info(),
+            ],
+        )?;
+
+        // Initialize offer account
         offer.buyer = ctx.accounts.buyer.key();
         offer.property = property.key();
         offer.amount = offer_amount;
@@ -205,6 +223,16 @@ pub mod real_estate_marketplace {
         offer.created_at = clock.unix_timestamp;
         offer.updated_at = clock.unix_timestamp;
         offer.expiration_time = expiration_time;
+        offer.escrow = escrow.key();
+
+        // Initialize escrow account data
+        escrow.offer = offer.key();
+        escrow.property = property.key();
+        escrow.buyer = ctx.accounts.buyer.key();
+        escrow.seller = property.owner;
+        escrow.amount = offer_amount;
+        escrow.nft_held = false;
+        escrow.created_at = clock.unix_timestamp;
 
         emit!(OfferCreated {
             offer: offer.key(),
@@ -220,6 +248,7 @@ pub mod real_estate_marketplace {
     pub fn respond_to_offer(ctx: Context<RespondToOffer>, accept: bool) -> Result<()> {
         let property = &mut ctx.accounts.property;
         let offer = &mut ctx.accounts.offer;
+        let escrow = &mut ctx.accounts.escrow;
         let clock = Clock::get()?;
 
         require!(
@@ -227,14 +256,82 @@ pub mod real_estate_marketplace {
             ErrorCode::OfferNotPending
         );
 
+        require!(
+            escrow.key() == offer.escrow,
+            ErrorCode::EscrowMismatch
+        );
+
+        // Verify the seller is the property owner
+        require!(
+            property.owner == ctx.accounts.owner.key(),
+            ErrorCode::NotPropertyOwner
+        );
+
+        // Verify the buyer account matches the offer
+        require!(
+            offer.buyer == ctx.accounts.buyer.key(),
+            ErrorCode::NotOfferBuyer
+        );
+
+        // Check if offer has expired
         if offer.expiration_time <= clock.unix_timestamp {
+            // Return funds to buyer if offer expired
+            let escrow_lamports = escrow.to_account_info().lamports();
+            require!(
+                escrow_lamports >= offer.amount,
+                ErrorCode::InsufficientEscrowFunds
+            );
+
+            // Transfer SOL back to buyer
+            **escrow.to_account_info().try_borrow_mut_lamports()? = escrow_lamports
+                .checked_sub(offer.amount)
+                .ok_or(ErrorCode::ArithmeticOverflow)?;
+            
+            **ctx.accounts.buyer.try_borrow_mut_lamports()? = ctx
+                .accounts.buyer
+                .lamports()
+                .checked_add(offer.amount)
+                .ok_or(ErrorCode::ArithmeticOverflow)?;
+
             offer.status = OfferStatus::Expired;
             offer.updated_at = clock.unix_timestamp;
+            
+            emit!(OfferExpired {
+                offer: offer.key(),
+                property: property.key(),
+                buyer: offer.buyer,
+                seller: property.owner,
+                amount: offer.amount,
+                timestamp: clock.unix_timestamp,
+            });
+            
             return Err(ErrorCode::OfferExpired.into());
         }
 
         if accept {
+            // Verify the seller has the NFT
+            let seller_nft_account = TokenAccount::try_deserialize(&mut &ctx.accounts.seller_nft_account.data.borrow()[..])?;
+            require!(
+                seller_nft_account.amount >= 1,
+                ErrorCode::NotNFTOwner
+            );
+            
+            // Transfer NFT to escrow
+            token::transfer(
+                CpiContext::new(
+                    ctx.accounts.token_program.to_account_info(),
+                    Transfer {
+                        from: ctx.accounts.seller_nft_account.to_account_info(),
+                        to: ctx.accounts.escrow_nft_account.to_account_info(),
+                        authority: ctx.accounts.owner.to_account_info(),
+                    },
+                ),
+                1,
+            )?;
+
+            escrow.nft_held = true;
             offer.status = OfferStatus::Accepted;
+
             emit!(OfferAccepted {
                 offer: offer.key(),
                 property: property.key(),
@@ -244,7 +341,26 @@ pub mod real_estate_marketplace {
                 timestamp: clock.unix_timestamp,
             });
         } else {
+            // Verify escrow has the funds
+            let escrow_lamports = escrow.to_account_info().lamports();
+            require!(
+                escrow_lamports >= offer.amount,
+                ErrorCode::InsufficientEscrowFunds
+            );
+
+            // Reject offer and return funds to buyer
+            **escrow.to_account_info().try_borrow_mut_lamports()? = escrow_lamports
+                .checked_sub(offer.amount)
+                .ok_or(ErrorCode::ArithmeticOverflow)?;
+            
+            **ctx.accounts.buyer.try_borrow_mut_lamports()? = ctx
+                .accounts.buyer
+                .lamports()
+                .checked_add(offer.amount)
+                .ok_or(ErrorCode::ArithmeticOverflow)?;
+
             offer.status = OfferStatus::Rejected;
+            
             emit!(OfferRejected {
                 offer: offer.key(),
                 property: property.key(),
@@ -262,6 +378,7 @@ pub mod real_estate_marketplace {
     pub fn execute_sale(ctx: Context<ExecuteSale>) -> Result<()> {
         let property = &mut ctx.accounts.property;
         let offer = &mut ctx.accounts.offer;
+        let escrow = &mut ctx.accounts.escrow;
         let marketplace = &ctx.accounts.marketplace;
         let clock = Clock::get()?;
 
@@ -273,57 +390,66 @@ pub mod real_estate_marketplace {
             offer.property == property.key(),
             ErrorCode::OfferPropertyMismatch
         );
+        require!(
+            escrow.key() == offer.escrow,
+            ErrorCode::EscrowMismatch
+        );
+        require!(
+            escrow.nft_held == true,
+            ErrorCode::NFTNotInEscrow
+        );
 
-        // Deserialize the token account to check ownership
-        let seller_nft_account = TokenAccount::try_deserialize(&mut &ctx.accounts.seller_nft_account.data.borrow()[..])?;
-        require!(seller_nft_account.amount == 1, ErrorCode::NotNFTOwner);
-
+        // Calculate fees
         let fee_amount = offer
             .amount
             .checked_mul(marketplace.fee_percentage)
             .ok_or(ErrorCode::ArithmeticOverflow)?
             .checked_div(10000)
             .ok_or(ErrorCode::ArithmeticOverflow)?;
+        
         let seller_amount = offer
             .amount
             .checked_sub(fee_amount)
             .ok_or(ErrorCode::ArithmeticOverflow)?;
 
+        // Transfer NFT from escrow to buyer
         token::transfer(
-            CpiContext::new(
+            CpiContext::new_with_signer(
                 ctx.accounts.token_program.to_account_info(),
                 Transfer {
-                    from: ctx.accounts.buyer_token_account.to_account_info(),
-                    to: ctx.accounts.seller_token_account.to_account_info(),
-                    authority: ctx.accounts.buyer.to_account_info(),
-                },
-            ),
-            seller_amount,
-        )?;
-
-        token::transfer(
-            CpiContext::new(
-                ctx.accounts.token_program.to_account_info(),
-                Transfer {
-                    from: ctx.accounts.buyer_token_account.to_account_info(),
-                    to: ctx.accounts.marketplace_fee_account.to_account_info(),
-                    authority: ctx.accounts.buyer.to_account_info(),
-                },
-            ),
-            fee_amount,
-        )?;
-
-        token::transfer(
-            CpiContext::new(
-                ctx.accounts.token_program.to_account_info(),
-                Transfer {
-                    from: ctx.accounts.seller_nft_account.to_account_info(),
+                    from: ctx.accounts.escrow_nft_account.to_account_info(),
                     to: ctx.accounts.buyer_nft_account.to_account_info(),
-                    authority: ctx.accounts.seller.to_account_info(),
+                    authority: escrow.to_account_info(),
                 },
+                &[&[
+                    b"escrow", 
+                    offer.key().as_ref(), 
+                    &[ctx.bumps.escrow]
+                ]],
             ),
             1,
         )?;
+
+        // Transfer SOL from escrow to seller
+        **ctx.accounts.seller.try_borrow_mut_lamports()? = ctx
+            .accounts.seller
+            .lamports()
+            .checked_add(seller_amount)
+            .ok_or(ErrorCode::ArithmeticOverflow)?;
+
+        // Transfer fee to marketplace
+        **ctx.accounts.marketplace_authority.try_borrow_mut_lamports()? = ctx
+            .accounts.marketplace_authority
+            .lamports()
+            .checked_add(fee_amount)
+            .ok_or(ErrorCode::ArithmeticOverflow)?;
+
+        // Reduce escrow lamports
+        **escrow.to_account_info().try_borrow_mut_lamports()? = escrow
+            .to_account_info()
+            .lamports()
+            .checked_sub(offer.amount)
+            .ok_or(ErrorCode::ArithmeticOverflow)?;
 
         let previous_owner = property.owner;
         property.owner = offer.buyer;
@@ -441,6 +567,7 @@ pub struct UpdateProperty<'info> {
 }
 
 #[derive(Accounts)]
+#[instruction(offer_amount: u64, expiration_time: i64)]
 pub struct MakeOffer<'info> {
     #[account(
         constraint = property.is_active,
@@ -455,6 +582,14 @@ pub struct MakeOffer<'info> {
         bump
     )]
     pub offer: Account<'info, Offer>,
+    #[account(
+        init,
+        payer = buyer,
+        space = 8 + size_of::<Escrow>(),
+        seeds = [b"escrow", offer.key().as_ref()],
+        bump
+    )]
+    pub escrow: Account<'info, Escrow>,
     #[account(mut)]
     pub buyer: Signer<'info>,
     pub system_program: Program<'info, System>,
@@ -473,8 +608,29 @@ pub struct RespondToOffer<'info> {
         constraint = offer.property == property.key()
     )]
     pub offer: Account<'info, Offer>,
+    #[account(
+        mut,
+        constraint = escrow.offer == offer.key()
+    )]
+    pub escrow: Account<'info, Escrow>,
     #[account(mut)]
     pub owner: Signer<'info>,
+    /// CHECK: This is the buyer account to return funds if offer is rejected
+    #[account(mut, constraint = offer.buyer == buyer.key())]
+    pub buyer: AccountInfo<'info>,
+    /// CHECK: This is the seller's NFT token account
+    #[account(
+        mut,
+        constraint = seller_nft_account.owner == &token::ID
+    )]
+    pub seller_nft_account: AccountInfo<'info>,
+    /// CHECK: This is the escrow's NFT token account
+    #[account(
+        mut,
+        constraint = escrow_nft_account.owner == &token::ID
+    )]
+    pub escrow_nft_account: AccountInfo<'info>,
+    pub token_program: Program<'info, Token>,
 }
 
 #[derive(Accounts)]
@@ -491,6 +647,13 @@ pub struct ExecuteSale<'info> {
     )]
     pub offer: Account<'info, Offer>,
     #[account(
+        mut,
+        seeds = [b"escrow", offer.key().as_ref()],
+        bump,
+        constraint = escrow.offer == offer.key()
+    )]
+    pub escrow: Account<'info, Escrow>,
+    #[account(
         init,
         payer = buyer,
         space = 8 + size_of::<TransactionHistory>(),
@@ -504,32 +667,25 @@ pub struct ExecuteSale<'info> {
     pub transaction_history: Account<'info, TransactionHistory>,
     #[account(mut)]
     pub buyer: Signer<'info>,
+    /// CHECK: This is the seller account that will receive the SOL payment
     #[account(
+        mut,
         constraint = property.owner == *seller.key
     )]
-    pub seller: Signer<'info>,
-    /// CHECK: This is the buyer's token account for payment
+    pub seller: AccountInfo<'info>,
+    /// CHECK: This is the marketplace authority to receive fees
+    #[account(
+        mut,
+        constraint = marketplace.authority == marketplace_authority.key()
+    )]
+    pub marketplace_authority: AccountInfo<'info>,
+    /// CHECK: This is the escrow's NFT token account
     #[account(mut)]
-    pub buyer_token_account: AccountInfo<'info>,
-    /// CHECK: This is the seller's token account for payment
-    #[account(mut)]
-    pub seller_token_account: AccountInfo<'info>,
-    /// CHECK: This is the marketplace fee token account
-    #[account(mut)]
-    pub marketplace_fee_account: AccountInfo<'info>,
-    /// CHECK: This is the seller's NFT token account
-    #[account(mut)]
-    pub seller_nft_account: AccountInfo<'info>,
+    pub escrow_nft_account: AccountInfo<'info>,
     /// CHECK: This is the buyer's NFT token account
     #[account(mut)]
     pub buyer_nft_account: AccountInfo<'info>,
-    /// CHECK: This is the NFT mint account
-    #[account(
-        constraint = property.nft_mint == *property_nft_mint.key
-    )]
-    pub property_nft_mint: AccountInfo<'info>,
     pub token_program: Program<'info, Token>,
-    pub associated_token_program: Program<'info, AssociatedToken>,
     pub system_program: Program<'info, System>,
     pub rent: Sysvar<'info, Rent>,
 }
@@ -568,6 +724,7 @@ pub struct Offer {
     pub created_at: i64,
     pub updated_at: i64,
     pub expiration_time: i64,
+    pub escrow: Pubkey,
 }
 
 #[account]
@@ -578,6 +735,17 @@ pub struct TransactionHistory {
     pub price: u64,
     pub timestamp: i64,
     pub transaction_index: u64,
+}
+
+#[account]
+pub struct Escrow {
+    pub offer: Pubkey,
+    pub property: Pubkey,
+    pub buyer: Pubkey,
+    pub seller: Pubkey,
+    pub amount: u64,
+    pub nft_held: bool,
+    pub created_at: i64,
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq, Eq)]
@@ -647,6 +815,16 @@ pub struct PropertySold {
     pub timestamp: i64,
 }
 
+#[event]
+pub struct OfferExpired {
+    pub offer: Pubkey,
+    pub property: Pubkey,
+    pub buyer: Pubkey,
+    pub seller: Pubkey,
+    pub amount: u64,
+    pub timestamp: i64,
+}
+
 #[error_code]
 pub enum ErrorCode {
     #[msg("Property ID too long")]
@@ -689,4 +867,10 @@ pub enum ErrorCode {
     NotNFTOwner,
     #[msg("Invalid NFT mint")]
     InvalidNFTMint,
+    #[msg("Escrow account mismatch")]
+    EscrowMismatch,
+    #[msg("NFT not held in escrow")]
+    NFTNotInEscrow,
+    #[msg("Insufficient funds in escrow")]
+    InsufficientEscrowFunds,
 }
