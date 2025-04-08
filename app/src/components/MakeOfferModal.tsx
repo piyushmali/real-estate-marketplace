@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { createOffer } from "../services/offerService";
 import { submitTransactionNoUpdate, getRecentBlockhash } from "../services/transactionService";
 import { useToast } from "@/components/ui/use-toast";
-import { PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL, Connection } from '@solana/web3.js';
+import { PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL, Connection, SYSVAR_RENT_PUBKEY, TransactionInstruction } from '@solana/web3.js';
 import { BN } from '@project-serum/anchor';
 
 // Define constants
@@ -54,8 +54,16 @@ export default function MakeOfferModal({
   // Function to get a recent blockhash
   const fetchRecentBlockhash = async (token: string) => {
     try {
+      console.log("Fetching recent blockhash...");
       const response = await getRecentBlockhash(token);
-      console.log("Got blockhash:", response.blockhash);
+      console.log("Got blockhash response:", response);
+      
+      if (!response || !response.blockhash) {
+        console.error("Invalid blockhash response:", response);
+        throw new Error("Invalid blockhash response from server");
+      }
+      
+      console.log("Using blockhash:", response.blockhash);
       return response.blockhash;
     } catch (error) {
       console.error("Error fetching blockhash:", error);
@@ -68,49 +76,53 @@ export default function MakeOfferModal({
     programId: PublicKey,
     propertyPda: PublicKey,
     offerPda: PublicKey,
+    escrowPda: PublicKey,
     buyerWallet: PublicKey,
     amount: number,
     expirationTime: number
-  ) => {
+  ): TransactionInstruction => {
     console.log("Creating make_offer instruction with the following parameters:");
     console.log(`- Program ID: ${programId.toString()}`);
     console.log(`- Property PDA: ${propertyPda.toString()}`);
     console.log(`- Offer PDA: ${offerPda.toString()}`);
+    console.log(`- Escrow PDA: ${escrowPda.toString()}`);
     console.log(`- Buyer wallet: ${buyerWallet.toString()}`);
     console.log(`- Amount: ${amount}`);
     console.log(`- Expiration time: ${expirationTime}`);
     
-    // Construct the instruction data for make_offer
-    // 8 bytes instruction discriminator + 8 bytes for amount + 8 bytes for expiration
-    const dataLayout = new Uint8Array(8 + 8 + 8);
+    // Use the exact discriminator from IDL
+    const instructionDiscriminator = Buffer.from([214, 98, 97, 35, 59, 12, 44, 178]);
     
-    // Set the instruction discriminator for make_offer from the IDL
-    // This is the correct discriminator from the IDL file
-    const instructionDiscriminator = new Uint8Array([214, 98, 97, 35, 59, 12, 44, 178]);
-    dataLayout.set(instructionDiscriminator, 0);
+    // Create a buffer for the entire data payload
+    // 8 bytes for discriminator + 8 bytes for amount + 8 bytes for expiration
+    const dataLayout = Buffer.alloc(24);
     
-    // Set the amount as u64 in little endian
+    // Copy the discriminator into the buffer
+    instructionDiscriminator.copy(dataLayout, 0);
+    
+    // Convert amount to Buffer and copy to the data buffer
     const amountBn = new BN(amount);
-    const amountBuffer = amountBn.toArray('le', 8);
-    dataLayout.set(amountBuffer, 8);
+    const amountBuffer = Buffer.from(amountBn.toArray('le', 8));
+    amountBuffer.copy(dataLayout, 8);
     
-    // Set the expiration time as i64 in little endian
+    // Convert expiration time to Buffer and copy to the data buffer
     const expirationTimeBn = new BN(expirationTime);
-    const expirationBuffer = expirationTimeBn.toArray('le', 8);
-    dataLayout.set(expirationBuffer, 16);
+    const expirationBuffer = Buffer.from(expirationTimeBn.toArray('le', 8));
+    expirationBuffer.copy(dataLayout, 16);
     
-    // Create the instruction with accounts in the right order
-    return {
-      programId,
+    // Create and return the TransactionInstruction
+    return new TransactionInstruction({
       keys: [
-        { pubkey: propertyPda, isSigner: false, isWritable: false },  // property
-        { pubkey: offerPda, isSigner: false, isWritable: true },       // offer
-        { pubkey: buyerWallet, isSigner: true, isWritable: true },     // buyer
-        { pubkey: new PublicKey("11111111111111111111111111111111"), isSigner: false, isWritable: false }, // system_program
-        { pubkey: new PublicKey("SysvarRent111111111111111111111111111111111"), isSigner: false, isWritable: false } // rent
+        { pubkey: propertyPda, isSigner: false, isWritable: false },  // property - NOT writable according to IDL
+        { pubkey: offerPda, isSigner: false, isWritable: true },     // offer
+        { pubkey: escrowPda, isSigner: false, isWritable: true },    // escrow
+        { pubkey: buyerWallet, isSigner: true, isWritable: true },   // buyer
+        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false }, // system_program
+        { pubkey: SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false } // rent
       ],
-      data: Buffer.from(dataLayout)
-    };
+      programId: programId,
+      data: dataLayout
+    });
   };
 
   // Display simulation logs in the UI
@@ -222,7 +234,14 @@ export default function MakeOfferModal({
       console.log(`Current time: ${currentTimeSeconds}, Expiration time: ${expirationTimeSeconds}`);
 
       // Get a fresh blockhash for the transaction
+      console.log("Getting fresh blockhash for transaction...");
       const blockhash = await fetchRecentBlockhash(token);
+      console.log("Got blockhash for transaction:", blockhash);
+      
+      if (!blockhash) {
+        console.error("Blockhash is undefined or empty");
+        throw new Error("Failed to get recent blockhash");
+      }
       
       // Create Solana connection for transaction simulation
       const connection = new Connection(SOLANA_RPC_ENDPOINT, "confirmed");
@@ -258,10 +277,12 @@ export default function MakeOfferModal({
       );
       console.log("Offer PDA:", offerPDA.toString());
       
-      // Create a transaction with the make_offer instruction
-      const transaction = new Transaction();
-      transaction.recentBlockhash = blockhash;
-      transaction.feePayer = walletPublicKey;
+      // Find the escrow PDA
+      const [escrowPDA] = PublicKey.findProgramAddressSync(
+        [Buffer.from("escrow"), offerPDA.toBuffer()],
+        programId
+      );
+      console.log("Escrow PDA:", escrowPDA.toString());
       
       // Convert amount to lamports (SOL * LAMPORTS_PER_SOL)
       const amountLamports = Math.floor(Number(amount) * LAMPORTS_PER_SOL);
@@ -271,17 +292,23 @@ export default function MakeOfferModal({
         programId,
         propertyPDA,
         offerPDA,
+        escrowPDA,
         walletPublicKey,
         amountLamports,
         expirationTimeSeconds
       );
       
-      transaction.add(offerInstruction);
-      
-      // Simulate the transaction before signing
+      // First simulate the transaction before signing
       console.log("Simulating transaction before signing...");
       try {
-        const simulation = await connection.simulateTransaction(transaction);
+        // Create a simulation transaction directly rather than using Message
+        const simulationTx = new Transaction({
+          recentBlockhash: blockhash,
+          feePayer: walletPublicKey
+        }).add(offerInstruction);
+
+        // Simulate the transaction
+        const simulation = await connection.simulateTransaction(simulationTx);
         
         // Process logs and display them
         const extractedLogs: string[] = [];
@@ -321,6 +348,12 @@ export default function MakeOfferModal({
               errorMessage = "Invalid offer amount.";
             } else if (errJson.includes("AccountNotSigner")) {
               errorMessage = "Transaction signing failed. Please try again.";
+            } else if (errJson.includes("6008")) {
+              errorMessage = "You cannot make an offer on your own property.";
+            } else if (errJson.includes("6009")) {
+              errorMessage = "Property is not active for offers.";
+            } else if (errJson.includes("6010")) {
+              errorMessage = "Invalid offer amount.";
             }
           }
           
@@ -333,41 +366,74 @@ export default function MakeOfferModal({
           setIsSubmitting(false);
           return;
         }
-
-        // If simulation was successful, send and sign the transaction
-        console.log("Sending transaction for signing...");
-        try {
-          const signedTx = await phantomProvider.signAndSendTransaction(transaction);
-          console.log("Transaction signed and sent:", signedTx.signature);
-          
-          // Wait for confirmation
-          const confirmation = await connection.confirmTransaction(signedTx.signature);
-          console.log("Transaction confirmed:", confirmation);
-          
-          if (confirmation.value.err) {
-            throw new Error("Transaction failed to confirm");
-          }
-          
-          toast({
-            title: "Success",
-            description: "Your offer has been submitted successfully!",
-            variant: "default"
-          });
-          
-          onSuccess();
-          onClose();
-        } catch (signError) {
-          console.error("Error signing transaction:", signError);
-          setErrors({ transaction: "Failed to sign transaction. Please try again." });
-          toast({
-            title: "Transaction Error",
-            description: "Failed to sign transaction. Please try again.",
-            variant: "destructive"
-          });
+        
+        // If simulation was successful, proceed with signing and sending
+        console.log("Simulation successful, proceeding with signing...");
+        
+        // Create a transaction with the make_offer instruction
+        const transaction = new Transaction();
+        transaction.recentBlockhash = blockhash;
+        transaction.feePayer = walletPublicKey;
+        transaction.add(offerInstruction);
+        
+        // Sign the transaction
+        console.log("Requesting transaction signature...");
+        const signedTx = await phantomProvider.signTransaction(transaction);
+        console.log("Transaction signed successfully");
+        
+        // Serialize the signed transaction
+        const serializedTx = signedTx.serialize();
+        console.log("Transaction serialized for sending");
+        
+        // Send the signed transaction
+        console.log("Sending signed transaction...");
+        const txSignature = await connection.sendRawTransaction(serializedTx, {
+          skipPreflight: false,
+          preflightCommitment: 'confirmed',
+          maxRetries: 3
+        });
+        console.log("Transaction sent:", txSignature);
+        
+        // Wait for confirmation
+        const confirmation = await connection.confirmTransaction(txSignature, 'confirmed');
+        console.log("Transaction confirmed:", confirmation);
+        
+        if (confirmation.value.err) {
+          throw new Error("Transaction failed to confirm");
         }
-      } catch (simulationError) {
-        console.error("Error during transaction simulation:", simulationError);
-        // Continue despite simulation error - this might be a technical issue rather than a logical one
+        
+        toast({
+          title: "Success",
+          description: "Your offer has been submitted successfully!",
+          variant: "default"
+        });
+        
+        onSuccess();
+        onClose();
+      } catch (error) {
+        console.error("Error processing transaction:", error);
+        
+        // Extract meaningful error message if possible
+        let errorMessage = "Failed to process transaction. Please try again.";
+        
+        if (error instanceof Error) {
+          console.error("Error details:", error.message);
+          
+          if (error.message.includes("AccountNotSigner")) {
+            errorMessage = "Transaction signing failed. Please try again.";
+          } else if (error.message.includes("User rejected")) {
+            errorMessage = "You rejected the transaction.";
+          } else if (error.message.includes("insufficient funds")) {
+            errorMessage = "Insufficient funds to complete the transaction.";
+          }
+        }
+        
+        setErrors({ transaction: errorMessage });
+        toast({
+          title: "Transaction Error",
+          description: errorMessage,
+          variant: "destructive"
+        });
       }
     } catch (error) {
       console.error("Error creating offer:", error);
@@ -412,11 +478,11 @@ export default function MakeOfferModal({
         }
       } else {
         setErrors({ form: "An unknown error occurred" });
-      toast({
-        title: "Error",
+        toast({
+          title: "Error",
           description: "Failed to create offer. Please try again.",
           variant: "destructive"
-      });
+        });
       }
     } finally {
       setIsSubmitting(false);

@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { PublicKey } from '@solana/web3.js';
+import { Connection } from '@solana/web3.js';
 
 const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8080';
 const PROGRAM_ID = new PublicKey('E7v7RResymJU5XvvPA9uwxGSEEsdSE6XvaP7BTV2GGoQ');
@@ -92,8 +93,9 @@ export const submitTransactionNoUpdate = async (
   }
 };
 
-export const getRecentBlockhash = async (token: string): Promise<string> => {
+export const getRecentBlockhash = async (token: string): Promise<{blockhash: string}> => {
   try {
+    console.log("Fetching blockhash from API...");
     const response = await axios.get(
       `${API_URL}/api/blockhash`,
       {
@@ -102,10 +104,29 @@ export const getRecentBlockhash = async (token: string): Promise<string> => {
         },
       }
     );
-    return response.data.blockhash;
+    
+    console.log("Blockhash API response:", response.data);
+    
+    if (!response.data || !response.data.blockhash) {
+      console.error("Invalid blockhash response:", response.data);
+      throw new Error('Invalid blockhash response from server');
+    }
+    
+    return { blockhash: response.data.blockhash };
   } catch (error) {
-    console.error('Error getting recent blockhash:', error);
-    throw error;
+    console.error('Error getting recent blockhash from backend:', error);
+    
+    // Fallback: Try to get blockhash directly from Solana
+    try {
+      console.log("Attempting to get blockhash directly from Solana...");
+      const connection = new Connection("https://api.devnet.solana.com", "confirmed");
+      const { blockhash } = await connection.getLatestBlockhash();
+      console.log("Got blockhash directly from Solana:", blockhash);
+      return { blockhash };
+    } catch (solanaError) {
+      console.error('Error getting blockhash from Solana:', solanaError);
+      throw new Error('Failed to get blockhash from both backend and Solana');
+    }
   }
 };
 
