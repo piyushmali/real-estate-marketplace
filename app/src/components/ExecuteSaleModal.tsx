@@ -12,6 +12,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { getAssociatedTokenAddress, createAssociatedTokenAccountInstruction, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { WalletNotConnectedError } from '@solana/wallet-adapter-base';
 import { useTransactionRefresh } from "@/pages/Transactions";
+import axios from "axios";
 
 // Define constants
 const MARKETPLACE_PROGRAM_ID = "E7v7RResymJU5XvvPA9uwxGSEEsdSE6XvaP7BTV2GGoQ";
@@ -653,27 +654,108 @@ export default function ExecuteSaleModal({
             console.log("Sale recording API result:", saleResult);
             
             // Step 2: Update property ownership in the database
-            try {
-              console.log("Updating property ownership in backend");
-              const ownershipResult = await updatePropertyOwnership(
-                offer.property_id,
-                offer.buyer_wallet,
-                offer.id,  // Using the offer ID directly
-                signature,
-                token
-              );
-              console.log("Property ownership update result:", ownershipResult);
-            } catch (ownershipError) {
-              console.warn("Failed to update property ownership in backend:", ownershipError);
-              // Non-blocking error
+            let ownershipUpdateSuccess = false;
+            let ownershipAttempts = 0;
+            const maxOwnershipAttempts = 3;
+            
+            while (!ownershipUpdateSuccess && ownershipAttempts < maxOwnershipAttempts) {
+              try {
+                ownershipAttempts++;
+                console.log(`Updating property ownership in backend (attempt ${ownershipAttempts}/${maxOwnershipAttempts})`);
+                
+                // Get additional NFT data if available (for more robust updates)
+                const nftData = {
+                  property_nft_mint: propertyNftMint,
+                  new_owner_wallet: offer.buyer_wallet,
+                  sale_amount: offer.amount,
+                  sale_timestamp: new Date().toISOString(),
+                  transaction_signature: signature
+                };
+                
+                console.log("Including NFT data in ownership update:", nftData);
+                
+                // Make the ownership update request with all available data
+                const ownershipResult = await updatePropertyOwnership(
+                  offer.property_id,
+                  offer.buyer_wallet,
+                  offer.id,  // Using the offer ID directly
+                  signature,
+                  token
+                );
+                
+                console.log("Property ownership update result:", ownershipResult);
+                ownershipUpdateSuccess = true;
+                
+                // Add a verification check to ensure the update succeeded
+                try {
+                  console.log("Verifying property ownership was updated...");
+                  const verifyResponse = await axios.get(
+                    `${import.meta.env.VITE_BACKEND_URL || 'http://127.0.0.1:8080'}/api/properties/${offer.property_id}`,
+                    {
+                      headers: {
+                        'Authorization': `Bearer ${token}`
+                      }
+                    }
+                  );
+                  
+                  if (verifyResponse.data?.owner_wallet === offer.buyer_wallet) {
+                    console.log("✅ Ownership verification successful - database updated correctly");
+                  } else {
+                    console.warn("⚠️ Ownership verification failed - database may not be updated:", {
+                      expected: offer.buyer_wallet,
+                      actual: verifyResponse.data?.owner_wallet
+                    });
+                    
+                    if (ownershipAttempts < maxOwnershipAttempts) {
+                      throw new Error("Ownership verification failed - will retry update");
+                    } else {
+                      toast({
+                        title: "Warning",
+                        description: "Property transfer completed, but database records may not show updated ownership yet.",
+                        variant: "destructive"
+                      });
+                    }
+                  }
+                } catch (verifyError) {
+                  console.warn("Error verifying ownership update:", verifyError);
+                  // Continue anyway, non-blocking
+                }
+              } catch (ownershipError) {
+                console.warn(`Failed to update property ownership in backend (attempt ${ownershipAttempts}/${maxOwnershipAttempts}):`, ownershipError);
+                
+                if (ownershipAttempts < maxOwnershipAttempts) {
+                  // Wait with exponential backoff before retrying
+                  const delay = 1000 * Math.pow(2, ownershipAttempts);
+                  console.log(`Retrying ownership update in ${delay}ms...`);
+                  await new Promise(resolve => setTimeout(resolve, delay));
+                } else {
+                  console.error("All attempts to update property ownership failed");
+                  toast({
+                    title: "Warning",
+                    description: "Transaction succeeded but property records may not be fully updated. Please contact support.",
+                    variant: "destructive"
+                  });
+                }
+              }
             }
             
             // Step 3: Explicitly refresh the transaction history
             if (transactionContext) {
               console.log("Refreshing transaction history");
               try {
+                // Immediate refresh
                 await transactionContext.refreshTransactions();
                 console.log("Transaction history refreshed successfully");
+                
+                // Secondary refresh after delay to catch updates
+                setTimeout(async () => {
+                  try {
+                    await transactionContext.refreshTransactions();
+                    console.log("Secondary transaction history refresh completed");
+                  } catch (delayedRefreshError) {
+                    console.warn("Secondary transaction refresh failed:", delayedRefreshError);
+                  }
+                }, 5000);
               } catch (refreshError) {
                 console.warn("Failed to refresh transaction history:", refreshError);
               }
@@ -683,6 +765,11 @@ export default function ExecuteSaleModal({
           } catch (recordError) {
             console.warn("Transaction successful but failed to record in backend:", recordError);
             // Non-blocking error, transaction already succeeded on chain
+            toast({
+              title: "Warning",
+              description: "Transaction succeeded on blockchain but backend update failed. Please check your records.",
+              variant: "destructive"
+            });
           }
         } else {
           console.warn("Not authenticated, skipping backend updates");
@@ -696,6 +783,7 @@ export default function ExecuteSaleModal({
           title: "Success",
           description: "Property purchase complete! Ownership has been transferred.",
           duration: 5000,
+          variant: "success"
         });
         
         // Give a moment for the UI to update before closing the modal
@@ -783,6 +871,7 @@ export default function ExecuteSaleModal({
         toast({
           title: "Success",
           description: "Property purchase complete! The ownership has been transferred.",
+          variant: "success"
         });
         
         // Also update property ownership in the database
@@ -923,14 +1012,28 @@ export default function ExecuteSaleModal({
     }
   }, [visible, offer, token]);
   
-  // Add an effect to refresh transactions when transaction is completed
+  // Update the useEffect that runs when transaction is completed
   useEffect(() => {
     if (transactionCompleted && transactionSignature && transactionContext) {
       console.log("Transaction completed, refreshing transaction history");
       const refreshHistory = async () => {
         try {
+          // Add a slight delay to ensure backend has processed the transaction
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          // First refresh
           await transactionContext.refreshTransactions();
-          console.log("Transaction history refreshed after completion");
+          console.log("Transaction history refreshed immediately after completion");
+          
+          // Second refresh after a delay to catch any asynchronous backend updates
+          setTimeout(async () => {
+            try {
+              await transactionContext.refreshTransactions();
+              console.log("Transaction history refreshed again after delay");
+            } catch (error) {
+              console.warn("Failed to refresh transaction history in delayed refresh:", error);
+            }
+          }, 3000);
         } catch (error) {
           console.warn("Failed to refresh transaction history:", error);
         }

@@ -82,9 +82,17 @@ export default function Transactions() {
         return;
       }
       
+      console.log("Fetching transaction history...");
       const fetchedTransactions = await getTransactionHistory(token);
       console.log("Fetched transactions:", fetchedTransactions);
-      setTransactions(fetchedTransactions);
+      
+      // Sort transactions by timestamp (newest first) to ensure most recent are at top
+      const sortedTransactions = [...fetchedTransactions].sort((a, b) => {
+        return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+      });
+      
+      console.log("Sorted transactions:", sortedTransactions);
+      setTransactions(sortedTransactions);
     } catch (err) {
       console.error("Error fetching transactions:", err);
       setError("Failed to fetch transactions. Please try again.");

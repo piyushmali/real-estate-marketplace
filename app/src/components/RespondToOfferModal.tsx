@@ -374,7 +374,8 @@ export default function RespondToOfferModal({
         setErrors({ nft: "Property NFT mint address is required but was not provided" });
         toast({
           title: "NFT Error",
-          description: "Property NFT mint address is required but was not provided. Try refreshing the property details."
+          description: "Property NFT mint address is required but was not provided. Try refreshing the property details.",
+          variant: "destructive"
         });
         setIsSubmitting(false);
         return;
@@ -387,7 +388,8 @@ export default function RespondToOfferModal({
         setErrors({ nft: "Invalid NFT mint address format" });
         toast({
           title: "NFT Error",
-          description: "The NFT mint address provided is not in a valid format"
+          description: "The NFT mint address provided is not in a valid format",
+          variant: "destructive"
         });
         setIsSubmitting(false);
         return;
@@ -399,7 +401,8 @@ export default function RespondToOfferModal({
         setErrors({ nft: "Could not find seller's NFT account" });
         toast({
           title: "NFT Error",
-          description: "Could not find seller's NFT account for this property"
+          description: "Could not find seller's NFT account for this property",
+          variant: "destructive"
         });
         setIsSubmitting(false);
         return;
@@ -412,7 +415,8 @@ export default function RespondToOfferModal({
         setErrors({ nft: "Could not create escrow NFT account" });
         toast({
           title: "NFT Error",
-          description: "Could not create escrow NFT account"
+          description: "Could not create escrow NFT account",
+          variant: "destructive"
         });
         setIsSubmitting(false);
         return;
@@ -462,7 +466,8 @@ export default function RespondToOfferModal({
             });
             toast({
               title: "Transaction Error",
-              description: "Failed to create escrow token account instruction."
+              description: "Failed to create escrow token account instruction.",
+              variant: "destructive"
             });
             setIsSubmitting(false);
             return;
@@ -480,7 +485,8 @@ export default function RespondToOfferModal({
         setErrors({ transaction: errorMsg });
         toast({
           title: "Error",
-          description: errorMsg
+          description: errorMsg,
+          variant: "destructive"
         });
         setIsSubmitting(false);
         return;
@@ -536,7 +542,8 @@ export default function RespondToOfferModal({
           setErrors({ simulation: errorMessage });
           toast({
             title: "Simulation Error",
-            description: errorMessage
+            description: errorMessage,
+            variant: "destructive"
           });
           setIsSubmitting(false);
           return;
@@ -552,7 +559,8 @@ export default function RespondToOfferModal({
         setErrors({ simulation: `Simulation error: ${(simulationError as Error).message}` });
         toast({
           title: "Simulation Error",
-          description: `Failed to simulate transaction: ${(simulationError as Error).message}`
+          description: `Failed to simulate transaction: ${(simulationError as Error).message}`,
+          variant: "destructive"
         });
         setIsSubmitting(false);
         return;
@@ -597,9 +605,10 @@ export default function RespondToOfferModal({
           
           toast({
             title: accept ? "Offer Accepted" : "Offer Rejected",
-            description: accept 
-              ? "You have successfully accepted the offer! The buyer can now complete the purchase."
-              : "You have rejected the offer."
+            description: `You have successfully ${accept ? 'accepted' : 'rejected'} the offer. ${
+              accept ? 'The buyer can now complete the purchase.' : ''
+            }`,
+            variant: "success"
           });
           
           // Set offer as accepted if we accepted it
@@ -617,7 +626,8 @@ export default function RespondToOfferModal({
           setErrors({ transaction: `Error sending transaction: ${(sendError as Error).message}` });
           toast({
             title: "Transaction Error",
-            description: `Failed to send transaction to Solana: ${(sendError as Error).message}`
+            description: `Failed to send transaction to Solana: ${(sendError as Error).message}`,
+            variant: "destructive"
           });
           setIsSubmitting(false);
           return;
@@ -627,7 +637,8 @@ export default function RespondToOfferModal({
         setErrors({ transaction: `Transaction signing error: ${(signError as Error).message}` });
         toast({
           title: "Transaction Error",
-          description: "Failed to sign or submit the transaction. Please try again."
+          description: "Failed to sign or submit the transaction. Please try again.",
+          variant: "destructive"
         });
         setIsSubmitting(false);
         return;
@@ -638,7 +649,8 @@ export default function RespondToOfferModal({
       setErrors({ unknown: `An unknown error occurred: ${(err as Error).message}` });
       toast({
         title: "Error",
-        description: "An error occurred while processing your request"
+        description: "An error occurred while processing your request",
+        variant: "destructive"
       });
     } finally {
       setIsSubmitting(false);
@@ -734,7 +746,8 @@ export default function RespondToOfferModal({
           setErrors({ simulation: errorMessage });
           toast({
             title: "Simulation Error",
-            description: errorMessage
+            description: errorMessage,
+            variant: "destructive"
           });
           setIsSubmitting(false);
           return;
@@ -750,7 +763,8 @@ export default function RespondToOfferModal({
         setErrors({ simulation: `Simulation error: ${(simulationError as Error).message}` });
         toast({
           title: "Simulation Error",
-          description: `Failed to simulate transaction: ${(simulationError as Error).message}`
+          description: `Failed to simulate transaction: ${(simulationError as Error).message}`,
+          variant: "destructive"
         });
         setIsSubmitting(false);
         return;
@@ -803,7 +817,8 @@ export default function RespondToOfferModal({
           setErrors({ transaction: `Error sending transaction: ${(sendError as Error).message}` });
           toast({
             title: "Transaction Error",
-            description: `Failed to send transaction to Solana: ${(sendError as Error).message}`
+            description: `Failed to send transaction to Solana: ${(sendError as Error).message}`,
+            variant: "destructive"
           });
           setIsSubmitting(false);
           return;
@@ -814,7 +829,8 @@ export default function RespondToOfferModal({
         setErrors({ transaction: `Transaction signing error: ${(signError as Error).message}` });
         toast({
           title: "Transaction Error",
-          description: "Failed to sign or submit the transaction. Please try again."
+          description: "Failed to sign or submit the transaction. Please try again.",
+          variant: "destructive"
         });
         setIsSubmitting(false);
         return;
@@ -825,7 +841,8 @@ export default function RespondToOfferModal({
       setErrors({ unknown: `An unknown error occurred: ${(err as Error).message}` });
       toast({
         title: "Error",
-        description: "An error occurred while processing your request"
+        description: "An error occurred while processing your request",
+        variant: "destructive"
       });
     } finally {
       setIsSubmitting(false);

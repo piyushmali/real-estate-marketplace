@@ -405,7 +405,7 @@ export default function MakeOfferModal({
         toast({
           title: "Success",
           description: "Your offer has been submitted successfully!",
-          variant: "default"
+          variant: "success"
         });
         
         onSuccess();

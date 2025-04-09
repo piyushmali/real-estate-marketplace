@@ -40,6 +40,7 @@ export function LegacyWalletConnectButton() {
             toast({
               title: "Wallet connected & authenticated",
               description: "You're now connected to SolEstate marketplace",
+              variant: "success"
             });
           }
         } catch (error) {
@@ -66,6 +67,7 @@ export function LegacyWalletConnectButton() {
     toast({
       title: "Wallet disconnected",
       description: "Your wallet has been disconnected",
+      variant: "default"
     });
   };
   
@@ -75,6 +77,7 @@ export function LegacyWalletConnectButton() {
     toast({
       title: "Address copied",
       description: "Your wallet address has been copied to clipboard",
+      variant: "success"
     });
   };
   

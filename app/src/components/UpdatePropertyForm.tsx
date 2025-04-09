@@ -357,7 +357,8 @@ export function UpdatePropertyForm({ property, onClose, onSuccess }: UpdatePrope
       
       toast({
         title: "Error",
-        description: errorMessage
+        description: errorMessage,
+        variant: "destructive"
       });
     } finally {
       setIsSubmitting(false);
@@ -781,15 +782,16 @@ export function UpdatePropertyForm({ property, onClose, onSuccess }: UpdatePrope
       // Log the transaction signature
       const signature = response.data.signature;
       console.log("Transaction confirmed with signature:", signature);
-      
-      // Now update the database
       console.log("Blockchain update successful, now updating database...");
       
       // Create a simplified update payload with only what we need to change
       const updateData: Record<string, any> = {};
       
       if (price !== property.price.toString()) {
-        updateData['price'] = parseFloat(price); 
+        // Convert SOL to lamports for database update to avoid deserialization errors
+        const priceInLamports = parseFloat(price) * LAMPORTS_PER_SOL;
+        updateData['price'] = Math.floor(priceInLamports);
+        console.log(`Converting price ${price} SOL to ${updateData['price']} lamports for DB update`);
       }
       
       if (imageUrl !== property.metadata_uri) {
@@ -824,7 +826,8 @@ export function UpdatePropertyForm({ property, onClose, onSuccess }: UpdatePrope
       
       toast({
         title: "Property Updated",
-        description: "Your property has been successfully updated on the blockchain and in the database."
+        description: "Your property has been successfully updated on the blockchain and in the database.",
+        variant: "success"
       });
       
       // Call the onSuccess callback if provided
@@ -910,7 +913,8 @@ export function UpdatePropertyForm({ property, onClose, onSuccess }: UpdatePrope
                 
                 toast({
                   title: "NFT Ownership Error",
-                  description: "You don't own the NFT for this property. The transaction failed."
+                  description: "You don't own the NFT for this property. The transaction failed.",
+                  variant: "destructive"
                 });
                 
                 // Ask user if they want to try a direct database update instead
@@ -962,7 +966,8 @@ export function UpdatePropertyForm({ property, onClose, onSuccess }: UpdatePrope
         
         toast({
           title: "Transaction Failed",
-          description: `Error: ${errorMessage}`
+          description: `Error: ${errorMessage}`,
+          variant: "destructive"
         });
       }
       
@@ -980,7 +985,10 @@ export function UpdatePropertyForm({ property, onClose, onSuccess }: UpdatePrope
       const updateData: Record<string, any> = {};
       
       if (price !== property.price.toString()) {
-        updateData['price'] = parseFloat(price); 
+        // Convert SOL to lamports (integer value) to avoid deserialization errors
+        const priceInLamports = parseFloat(price) * LAMPORTS_PER_SOL;
+        updateData['price'] = Math.floor(priceInLamports); // Ensure it's an integer
+        console.log(`Converting price ${price} SOL to ${updateData['price']} lamports for API update`);
       }
       
       if (imageUrl !== property.metadata_uri) {
@@ -991,7 +999,7 @@ export function UpdatePropertyForm({ property, onClose, onSuccess }: UpdatePrope
         updateData['is_active'] = isActive;
       }
       
-      console.log("Sending API update with data:", updateData);
+      console.log("Sending database update with data:", updateData);
       
       // Only make the API call if we have fields to update
       if (Object.keys(updateData).length > 0) {
@@ -1014,7 +1022,8 @@ export function UpdatePropertyForm({ property, onClose, onSuccess }: UpdatePrope
         
         toast({
           title: "Property Updated",
-          description: "Your property has been successfully updated in the database."
+          description: "Your property has been successfully updated in the database.",
+          variant: "success"
         });
         
         // Call the onSuccess callback if provided
@@ -1031,14 +1040,16 @@ export function UpdatePropertyForm({ property, onClose, onSuccess }: UpdatePrope
         console.log("No changes to update in database");
         toast({
           title: "No Changes",
-          description: "No changes were made to the property."
+          description: "No changes were made to the property.",
+          variant: "default"
         });
       }
     } catch (error) {
       console.error("API update error:", error);
       toast({
         title: "Update Failed",
-        description: `Failed to update property: ${error instanceof Error ? error.message : 'Unknown error'}`
+        description: `Failed to update property: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        variant: "destructive"
       });
       
       // Rethrow the error to be caught by the main handler
