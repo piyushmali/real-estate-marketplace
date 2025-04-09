@@ -6,11 +6,12 @@ import { PublicKey, Transaction, LAMPORTS_PER_SOL, Connection, SystemProgram, Tr
 import { BN } from '@project-serum/anchor';
 import { Offer } from "@/types/offer";
 import { Property } from "@/context/PropertyContext";
-import { submitTransactionNoUpdate, getRecentBlockhash, recordPropertySale, simulateTransaction } from "../services/transactionService";
+import { getTransactionHistory, recordPropertySale, updatePropertyOwnership } from "../services/transactionService";
 import { useWallet } from "@/hooks/useWallet";
 import { useAuth } from "@/hooks/useAuth";
 import { getAssociatedTokenAddress, createAssociatedTokenAccountInstruction, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { WalletNotConnectedError } from '@solana/wallet-adapter-base';
+import { useTransactionRefresh } from "@/pages/Transactions";
 
 // Define constants
 const MARKETPLACE_PROGRAM_ID = "E7v7RResymJU5XvvPA9uwxGSEEsdSE6XvaP7BTV2GGoQ";
@@ -62,6 +63,7 @@ export default function ExecuteSaleModal({
   const [isBuyer, setIsBuyer] = useState(false);
   const [isSeller, setIsSeller] = useState(false);
   const [property, setProperty] = useState<Property | null>(null);
+  const transactionContext = useTransactionRefresh();
   
   useEffect(() => {
     // Log debug info
@@ -117,12 +119,11 @@ export default function ExecuteSaleModal({
   // Function to get a recent blockhash
   const fetchRecentBlockhash = async () => {
     try {
-      if (!token) {
-        throw new Error("Authentication token is required to fetch blockhash");
-      }
-      const response = await getRecentBlockhash(token);
-      console.log("Got blockhash:", response.blockhash);
-      return response.blockhash;
+      console.log("Getting blockhash directly from Solana...");
+      const connection = new Connection(SOLANA_RPC_ENDPOINT, "confirmed");
+      const { blockhash } = await connection.getLatestBlockhash();
+      console.log("Got blockhash from Solana:", blockhash);
+      return blockhash;
     } catch (error) {
       console.error("Error fetching blockhash:", error);
       throw error;
@@ -200,13 +201,11 @@ export default function ExecuteSaleModal({
     transactionHistoryPDA: PublicKey,
     buyerPublicKey: PublicKey,
     sellerPublicKey: PublicKey,
-    buyerTokenAccount: PublicKey, 
-    sellerTokenAccount: PublicKey,
-    marketplaceFeeAccount: PublicKey,
-    sellerNftAccount: PublicKey,
-    buyerNftAccount: PublicKey,
-    propertyNftMintPublicKey: PublicKey,
-    isSellerSigning: boolean = true
+    escrowPDA: PublicKey,
+    escrowNFTAccount: PublicKey,
+    buyerNFTAccount: PublicKey,
+    marketplaceAuthority: PublicKey,
+    propertyNftMintPublicKey: PublicKey
   ) => {
     console.log("Creating execute_sale instruction with the following parameters:");
     console.log("- Program ID:", programId.toString());
@@ -216,36 +215,31 @@ export default function ExecuteSaleModal({
     console.log("- Transaction History PDA:", transactionHistoryPDA.toString());
     console.log("- Buyer wallet:", buyerPublicKey.toString());
     console.log("- Seller wallet:", sellerPublicKey.toString());
-    console.log("- Buyer token account:", buyerTokenAccount.toString());
-    console.log("- Seller token account:", sellerTokenAccount.toString());
-    console.log("- Marketplace fee account:", marketplaceFeeAccount.toString());
-    console.log("- Seller NFT account:", sellerNftAccount.toString());
-    console.log("- Buyer NFT account:", buyerNftAccount.toString());
+    console.log("- Escrow PDA:", escrowPDA.toString());
+    console.log("- Escrow NFT account:", escrowNFTAccount.toString());
+    console.log("- Buyer NFT account:", buyerNFTAccount.toString());
+    console.log("- Marketplace authority:", marketplaceAuthority.toString());
     console.log("- NFT mint:", propertyNftMintPublicKey.toString());
-    console.log("- Is seller signing:", isSellerSigning);
     
     // Instruction discriminator for execute_sale (first 8 bytes of the SHA256 hash of "execute_sale")
     const discriminator = Buffer.from([37, 74, 217, 157, 79, 49, 35, 6]);
     
-    // Create instruction with accounts EXACTLY matching the test file
+    // Create instruction with accounts EXACTLY matching the lib.rs file
     return new TransactionInstruction({
       programId,
       keys: [
-        // Put the accounts in EXACTLY the same order as in the test file
+        // Following the exact order from lib.rs ExecuteSale struct
         { pubkey: marketplacePDA, isSigner: false, isWritable: true },
         { pubkey: propertyPDA, isSigner: false, isWritable: true },
         { pubkey: offerPDA, isSigner: false, isWritable: true },
+        { pubkey: escrowPDA, isSigner: false, isWritable: true },
         { pubkey: transactionHistoryPDA, isSigner: false, isWritable: true },
         { pubkey: buyerPublicKey, isSigner: true, isWritable: true },
-        { pubkey: sellerPublicKey, isSigner: isSellerSigning, isWritable: true },
-        { pubkey: buyerTokenAccount, isSigner: false, isWritable: true },
-        { pubkey: sellerTokenAccount, isSigner: false, isWritable: true },
-        { pubkey: marketplaceFeeAccount, isSigner: false, isWritable: true },
-        { pubkey: sellerNftAccount, isSigner: false, isWritable: true },
-        { pubkey: buyerNftAccount, isSigner: false, isWritable: true },
-        { pubkey: propertyNftMintPublicKey, isSigner: false, isWritable: false },
+        { pubkey: sellerPublicKey, isSigner: false, isWritable: true },
+        { pubkey: marketplaceAuthority, isSigner: false, isWritable: true },
+        { pubkey: escrowNFTAccount, isSigner: false, isWritable: true },
+        { pubkey: buyerNFTAccount, isSigner: false, isWritable: true },
         { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
-        { pubkey: ASSOCIATED_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
         { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
         { pubkey: SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
       ],
@@ -290,14 +284,11 @@ export default function ExecuteSaleModal({
       }
       
       // Get buyer and seller addresses
-      const buyerPubkey = new PublicKey(walletAddress);
+      const buyerPubkey = new PublicKey(offer.buyer_wallet);
       const sellerPubkey = new PublicKey(propertyOwner);
       
       console.log("🏠 Buyer Address:", buyerPubkey.toString());
       console.log("🏠 Seller Address:", sellerPubkey.toString());
-      
-      // Calculate the price in lamports
-      console.log("🏠 Full offer object:", offer);
       
       // Ensure the price is always in lamports, and handle both formats correctly
       const price = offer.amount;
@@ -308,27 +299,59 @@ export default function ExecuteSaleModal({
       console.log("🏠 Price in SOL:", priceInLamports / LAMPORTS_PER_SOL);
       
       // Use more detailed PDAs and create a proper execute_sale instruction
-      const pdas = await createPDAs(
-        new PublicKey(MARKETPLACE_PROGRAM_ID),
-        offer.property_id,
-        offer.buyer_wallet,
-        property.owner
+      const programId = new PublicKey(MARKETPLACE_PROGRAM_ID);
+      const marketplaceAuthority = new PublicKey("A9xYe8XDnCRyPdy7B75B5PT7JP9ktLtxi6xMBVa7C4Xd");
+      
+      // Derive all necessary PDAs
+      const [marketplacePDA] = PublicKey.findProgramAddressSync(
+        [Buffer.from("marketplace"), marketplaceAuthority.toBuffer()],
+        programId
       );
+      
+      const [propertyPDA] = PublicKey.findProgramAddressSync(
+        [Buffer.from("property"), marketplacePDA.toBuffer(), Buffer.from(offer.property_id)],
+        programId
+      );
+      
+      const [offerPDA] = PublicKey.findProgramAddressSync(
+        [Buffer.from("offer"), propertyPDA.toBuffer(), buyerPubkey.toBuffer()],
+        programId
+      );
+      
+      // Get escrow PDA - critical for executing the sale
+      const [escrowPDA] = PublicKey.findProgramAddressSync(
+        [Buffer.from("escrow"), offerPDA.toBuffer()],
+        programId
+      );
+      
+      // Derive transaction history PDA using property transaction count
+      let transactionCount;
+      try {
+        // If we know the property transaction count, use it
+        transactionCount = property.transaction_count || 0;
+      } catch (e) {
+        // If not available, default to 0 (better would be to fetch from chain)
+        transactionCount = 0;
+      }
+      
+      const [transactionHistoryPDA] = PublicKey.findProgramAddressSync(
+        [
+          Buffer.from("transaction"),
+          propertyPDA.toBuffer(),
+          new Uint8Array(new BN(transactionCount + 1).toArray("le", 8))
+        ],
+        programId
+      );
+      
+      console.log("🏠 Derived PDAs:");
+      console.log("- Marketplace PDA:", marketplacePDA.toString());
+      console.log("- Property PDA:", propertyPDA.toString());
+      console.log("- Offer PDA:", offerPDA.toString());
+      console.log("- Escrow PDA:", escrowPDA.toString());
+      console.log("- Transaction History PDA:", transactionHistoryPDA.toString());
 
-      // Get associated token accounts for buyer and seller tokens (SOL)
-      const buyerTokenAccount = new PublicKey(buyerPubkey); // SOL wallet is the token account
-      const sellerTokenAccount = new PublicKey(sellerPubkey); // SOL wallet is the token account
-      
-      // Get associated token accounts for buyer and seller NFTs
-      const sellerNftAccount = await getAssociatedTokenAddress(
-        nftMint,
-        sellerPubkey,
-        false,
-        TOKEN_PROGRAM_ID,
-        ASSOCIATED_TOKEN_PROGRAM_ID
-      );
-      
-      const buyerNftAccount = await getAssociatedTokenAddress(
+      // Get buyer's NFT account (Associated Token Account)
+      const buyerNFTAccount = await getAssociatedTokenAddress(
         nftMint,
         buyerPubkey,
         false,
@@ -336,39 +359,19 @@ export default function ExecuteSaleModal({
         ASSOCIATED_TOKEN_PROGRAM_ID
       );
       
-      // Use a proper marketplace fee account - derive the correct PDA for the fee account
-      // This fixes the 0xbc2: invalid owner error in the transaction
-      const [marketplaceFeeAccount] = PublicKey.findProgramAddressSync(
-        [Buffer.from("marketplace_fee"), pdas.marketplace.toBuffer()],
-        new PublicKey(MARKETPLACE_PROGRAM_ID)
+      // Get escrow NFT account (Associated Token Account)
+      // This is the account where the NFT is held in escrow
+      const escrowNFTAccount = await getAssociatedTokenAddress(
+        nftMint,
+        escrowPDA,
+        true,  // Allow owner off curve for PDA
+        TOKEN_PROGRAM_ID,
+        ASSOCIATED_TOKEN_PROGRAM_ID
       );
       
-      console.log("🏠 Marketplace Fee Account:", marketplaceFeeAccount.toString());
-      console.log("🏠 Seller NFT Account:", sellerNftAccount.toString());
-      console.log("🏠 Buyer NFT Account:", buyerNftAccount.toString());
-      
-      // Verify that the seller actually owns the NFT token
-      try {
-        console.log("🏠 Verifying seller ownership of NFT...");
-        const sellerTokenInfo = await connection.getAccountInfo(sellerNftAccount);
-        
-        if (!sellerTokenInfo) {
-          console.error("🏠 Seller doesn't have a token account for this NFT");
-          throw new Error("Seller doesn't own this property NFT - token account not found");
-        }
-        
-        console.log("🏠 Seller token account exists - assuming ownership confirmed");
-      } catch (error: any) {
-        console.error("🏠 Error verifying NFT ownership:", error);
-        throw new Error("Failed to verify property ownership: " + error.message);
-      }
-
-      // Calculate fee amounts (not directly used but helpful for logs)
-      const marketplaceFee = Math.floor(priceInLamports * 0.025); // 2.5% marketplace fee
-      const sellerAmount = priceInLamports - marketplaceFee;
-      
-      console.log("🏠 Marketplace Fee:", marketplaceFee);
-      console.log("🏠 Seller Amount:", sellerAmount);
+      console.log("🏠 Token accounts:");
+      console.log("- Buyer NFT Account:", buyerNFTAccount.toString());
+      console.log("- Escrow NFT Account:", escrowNFTAccount.toString());
 
       // Create a new transaction
       const transaction = new Transaction();
@@ -376,94 +379,60 @@ export default function ExecuteSaleModal({
       // Check if buyer's NFT ATA exists, if not create it
       try {
         console.log("🏠 Checking if buyer NFT account exists...");
-        const buyerNftInfo = await connection.getAccountInfo(buyerNftAccount);
-        console.log("🏠 Buyer NFT account exists already:", !!buyerNftInfo);
+        const buyerNftInfo = await connection.getAccountInfo(buyerNFTAccount);
         
         if (!buyerNftInfo) {
           console.log("🏠 Creating buyer NFT account...");
-          
-          // Following the PropertyForm.tsx pattern for creating token accounts
-          // Calculate rent-exempt minimum balance
-          const rentExempt = await connection.getMinimumBalanceForRentExemption(165);
-          
-          // Create the associated token account with proper initialization
-          // EXACTLY matching the order in PropertyForm.tsx (which works)
           const createATAIx = createAssociatedTokenAccountInstruction(
-            buyerPubkey,              // Payer
-            buyerNftAccount,          // ATA address
-            buyerPubkey,              // Owner
-            nftMint                   // Mint
+            buyerPubkey,        // Payer
+            buyerNFTAccount,    // ATA address
+            buyerPubkey,        // Owner
+            nftMint             // Mint
           );
-          
-          // Add instruction to transaction
           transaction.add(createATAIx);
-          
-          console.log("🏠 Added createAssociatedTokenAccountInstruction for buyer NFT account");
-        } else {
-          // Verify that the token account belongs to the buyer
-          try {
-            const accountInfo = await connection.getTokenAccountBalance(buyerNftAccount);
-            console.log("🏠 Buyer NFT token account info:", accountInfo);
-          } catch (err) {
-            console.log("🏠 Error checking buyer token account balance:", err);
-          }
         }
       } catch (error) {
-        console.error("🏠 Error checking/creating buyer NFT account:", error);
-        
-        // Be extremely defensive and simply try to create the account anyway
+        console.error("🏠 Error checking buyer NFT account:", error);
+        // Defensive approach: try to create account anyway
         try {
           console.log("🏠 Creating buyer NFT account via fallback path");
-          
           const createATAIx = createAssociatedTokenAccountInstruction(
-            buyerPubkey,              // Payer
-            buyerNftAccount,          // ATA address
-            buyerPubkey,              // Owner
-            nftMint                   // Mint
+            buyerPubkey,        // Payer
+            buyerNFTAccount,    // ATA address
+            buyerPubkey,        // Owner
+            nftMint             // Mint
           );
-          
           transaction.add(createATAIx);
-          console.log("🏠 Added createAssociatedTokenAccountInstruction via fallback path");
         } catch (createError) {
           console.error("🏠 Critical error creating buyer NFT account:", createError);
-          // Continue anyway and let the transaction fail with better error information
         }
       }
 
       // Create the execute_sale instruction to call our Solana program
-      console.log("🏠 Creating execute_sale instruction to call our Solana program");
+      console.log("🏠 Creating execute_sale instruction");
       
-      // Prepare all required accounts following the pattern in PropertyForm.tsx
       const executeOfferIx = createExecuteSaleInstruction(
-        new PublicKey(MARKETPLACE_PROGRAM_ID),
-        pdas.marketplace,
-        pdas.property,
-        pdas.offer,
-        pdas.transactionHistory,
+        programId,
+        marketplacePDA,
+        propertyPDA,
+        offerPDA,
+        transactionHistoryPDA,
         buyerPubkey,
         sellerPubkey,
-        buyerTokenAccount,
-        sellerTokenAccount,
-        marketplaceFeeAccount,
-        sellerNftAccount,
-        buyerNftAccount,
-        nftMint,
-        isSeller // Set correctly based on whether current signer is seller
+        escrowPDA,
+        escrowNFTAccount,
+        buyerNFTAccount,
+        marketplaceAuthority,
+        nftMint
       );
       
       // Add the execute_sale instruction to the transaction
       transaction.add(executeOfferIx);
 
-      // Get a recent blockhash and set fee payer
-      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
+      // Get a recent blockhash - directly from Solana
+      const blockhash = await fetchRecentBlockhash();
       transaction.recentBlockhash = blockhash;
-      
-      // Set fee payer to the current wallet
-      // This ensures the transaction will be signed correctly
-      const feePayer = isBuyer ? buyerPubkey : sellerPubkey;
-      transaction.feePayer = feePayer;
-      
-      console.log("🏠 Transaction fee payer set to:", feePayer.toString());
+      transaction.feePayer = buyerPubkey;
       
       // Run a simulation before returning the transaction
       try {
@@ -473,13 +442,11 @@ export default function ExecuteSaleModal({
         if (simulationResult.value.err) {
           console.error("🏠 Simulation failed:", simulationResult.value.err);
           
-          // Detailed logging for debugging
           if (simulationResult.value.logs) {
             console.log("🏠 Simulation logs:");
             simulationResult.value.logs.forEach(log => console.log(`   ${log}`));
           }
           
-          // Don't prevent execution but log the warning
           console.warn("🏠 Transaction may fail when submitted - simulation failed");
         } else {
           console.log("🏠 Simulation successful!");
@@ -490,21 +457,16 @@ export default function ExecuteSaleModal({
         }
       } catch (simError) {
         console.error("🏠 Error during simulation:", simError);
-        // Don't prevent execution but log the warning
         console.warn("🏠 Transaction may fail when submitted - simulation error");
       }
       
       // Log details of the transaction for debugging
       console.log("🏠 Transaction created successfully:", transaction);
       console.log("🏠 Transaction includes", transaction.instructions.length, "instructions");
-      transaction.instructions.forEach((ix, i) => {
-        console.log(`🏠 Instruction ${i}: programId=${ix.programId.toString()}`);
-      });
       
       return transaction;
     } catch (error: any) {
       console.error("🏠 Error creating transaction:", error);
-      // Provide detailed error message
       let errorMessage = "Failed to create transaction";
       if (error instanceof Error) {
         errorMessage = `Error: ${error.message}`;
@@ -610,7 +572,7 @@ export default function ExecuteSaleModal({
     }
   };
   
-  // Update the handleBuyerComplete function to improve error handling
+  // Update the handleBuyerComplete function to use a direct Solana connection
   const handleBuyerComplete = async () => {
     try {
       setIsSubmitting(true);
@@ -621,7 +583,7 @@ export default function ExecuteSaleModal({
         throw new Error("Wallet not connected or cannot sign transactions");
       }
       
-      console.log("Using property:", property);
+      // Ensure we have property details
       if (!property) {
         await fetchPropertyDetails();
         if (!property) {
@@ -629,103 +591,119 @@ export default function ExecuteSaleModal({
         }
       }
       
-      // Create the complete transaction with the execute_sale instruction
-      console.log("Creating execute_sale transaction for the Solana program");
-      
-      // Ensure property is not null before calling createTransaction
-      if (!property) {
-        throw new Error("Property data is not available");
-      }
-      
+      // Create the transaction
       const transaction = await createTransaction(offer, property);
       if (!transaction) {
         throw new Error("Failed to create transaction");
       }
       
-      console.log("Transaction created successfully:", transaction);
-      console.log(`Transaction has ${transaction.instructions.length} instructions`);
-      transaction.instructions.forEach((ix, i) => {
-        console.log(`Instruction ${i}: programId=${ix.programId.toString()}`);
-        if (ix.programId.toString() === MARKETPLACE_PROGRAM_ID) {
-          console.log("   This is the execute_sale instruction");
-        }
-      });
-      
-      console.log("Asking wallet to sign transaction");
-      
       // Buyer signs the transaction
+      console.log("Asking wallet to sign transaction");
       const signedTx = await signTransaction(transaction);
       console.log("Transaction signed successfully by buyer");
       
-      // Serialize the transaction for submission
-      const serializedTx = Buffer.from(signedTx.serialize()).toString('base64');
-      console.log("Transaction serialized successfully, length:", serializedTx.length);
+      // Show processing toast
+      toast({
+        title: "Processing",
+        description: "Executing sale transaction on the Solana blockchain..."
+      });
       
-      // Submit transaction to backend
-      console.log("Sending transaction to backend for submission to blockchain");
+      // Submit directly to Solana
       try {
-        const result = await submitTransactionNoUpdate(serializedTx, token!);
-        console.log("Transaction submission result:", result);
+        console.log("Submitting transaction directly to Solana...");
+        const connection = new Connection(SOLANA_RPC_ENDPOINT, "confirmed");
+        const signature = await connection.sendRawTransaction(signedTx.serialize());
+        console.log("Transaction sent to Solana:", signature);
         
-        if (!result.success) {
-          // Extract more detailed error information if possible
-          const errorMessage = result.message || "Unknown error";
-          console.error("Transaction failed with error:", errorMessage);
-          
-          // Check for specific error codes and provide better messages
-          if (errorMessage.includes("0xbc2")) {
-            throw new Error("Transaction failed: Error creating token accounts. Check that all accounts are properly initialized before executing the sale.");
-          } else if (errorMessage.includes("custom program error")) {
-            // Try to extract the error code and provide context
-            const errorMatch = errorMessage.match(/custom program error: (0x[0-9a-f]+)/i);
-            const errorCode = errorMatch ? errorMatch[1] : "unknown";
-            const errorMeaning = getErrorMeaning(errorCode);
-            throw new Error(`Transaction failed: Program error code ${errorCode} - ${errorMeaning}`);
-          }
-          
-          throw new Error(`Transaction failed: ${errorMessage}`);
-        }
-        
-        // Handle success
+        // Wait for confirmation
         toast({
           title: "Transaction Submitted",
-          description: "The property sale has been executed on-chain!",
+          description: "Waiting for confirmation..."
         });
         
-        // Record the sale in our database
-        await processSaleRecording(result.signature);
+        // Wait for confirmation with timeout
+        const confirmation = await Promise.race([
+          connection.confirmTransaction(signature),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("Confirmation timeout")), 60000))
+        ]);
         
-        // Close modal if successful
-        onSuccess();
-        onClose();
-      } catch (submitError: any) {
-        console.error("Error during transaction submission:", submitError);
+        console.log("Transaction confirmed:", confirmation);
         
-        // Provide more context about what might be wrong
-        if (submitError.response && submitError.response.status === 500) {
-          console.log("Server error details:", submitError.response.data);
+        // If we get here, the transaction was successful - now record it in the backend
+        if (token) {
+          // Now call the backend API to record the sale
+          try {
+            const saleResult = await recordPropertySale(
+              offer.property_id,
+              offer.seller_wallet,
+              offer.buyer_wallet,
+              offer.amount,
+              signature,
+              token
+            );
+            console.log("Sale recording API result:", saleResult);
+          } catch (recordError) {
+            console.warn("Transaction successful but failed to record in backend:", recordError);
+            // Non-blocking error, transaction already succeeded on chain
+          }
           
-          // Try to parse the error message for more details
-          const errorText = submitError.response.data;
-          if (typeof errorText === 'string') {
-            // Look for common error patterns in Solana transactions
-            if (errorText.includes("insufficient funds")) {
-              throw new Error("Transaction failed: You don't have enough SOL to complete this purchase.");
-            } else if (errorText.includes("custom program error")) {
-              const errorMatch = errorText.match(/custom program error: (0x[0-9a-f]+)/i);
-              const errorCode = errorMatch ? errorMatch[1] : "unknown";
-              throw new Error(`Transaction failed: Program error code ${errorCode}. Please check your Solana program for this error code.`);
-            }
+          // Also update property ownership in the database
+          try {
+            await updatePropertyOwnership(
+              offer.property_id,
+              offer.buyer_wallet,
+              offer.id.toString(),
+              signature,
+              token
+            );
+            console.log("Property ownership updated in database");
+          } catch (ownershipError) {
+            console.warn("Failed to update property ownership in backend:", ownershipError);
+            // Non-blocking error
+          }
+        } else {
+          console.warn("Not authenticated, skipping backend updates");
+        }
+        
+        // Refresh transaction history if context is available
+        if (transactionContext) {
+          try {
+            await transactionContext.refreshTransactions();
+          } catch (refreshError) {
+            console.warn("Failed to refresh transaction history:", refreshError);
           }
         }
         
-        throw submitError;
+        toast({
+          title: "Success",
+          description: "Property purchase complete! Ownership has been transferred."
+        });
+        
+        // Close the modal and notify parent component
+        onSuccess();
+        onClose();
+      } catch (sendError) {
+        console.error("Error sending transaction to Solana:", sendError);
+        let errorMessage = "Failed to send transaction to Solana";
+        
+        if (sendError instanceof Error) {
+          errorMessage = sendError.message;
+        }
+        
+        toast({
+          title: "Transaction Error",
+          description: errorMessage,
+          variant: "destructive"
+        });
+        
+        throw sendError;
       }
     } catch (err: any) {
       console.error("Error during transaction completion:", err);
       toast({
         title: "Error",
         description: `Failed to complete transaction: ${err.message}`,
+        variant: "destructive"
       });
     } finally {
       setIsSubmitting(false);
@@ -783,6 +761,27 @@ export default function ExecuteSaleModal({
           title: "Success",
           description: "Property purchase complete! The ownership has been transferred.",
         });
+        
+        // Also update property ownership in the database
+        try {
+          await updatePropertyOwnership(
+            offer.property_id,
+            offer.buyer_wallet,
+            offer.id.toString(),
+            signature,
+            token
+          );
+          console.log("Property ownership updated in database");
+        } catch (ownershipError) {
+          console.error("Error updating property ownership:", ownershipError);
+          // Non-blocking error
+        }
+        
+        // Refresh transaction history if context is available
+        if (transactionContext) {
+          await transactionContext.refreshTransactions();
+        }
+        
         onSuccess();
         onClose();
       } else {

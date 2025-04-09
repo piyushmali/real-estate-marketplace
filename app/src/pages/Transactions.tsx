@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -6,6 +6,7 @@ import { ExternalLink } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { getTransactionHistory } from "@/services/transactionService";
 import { LAMPORTS_PER_SOL } from "@solana/web3.js";
+import { createContext, useContext } from "react";
 
 // Define Transaction type
 interface Transaction {
@@ -22,6 +23,17 @@ const formatWalletAddress = (address: string) => {
   if (!address) return '';
   return `${address.substring(0, 6)}...${address.substring(address.length - 4)}`;
 };
+
+// Create a context to provide transaction refreshing functionality
+type TransactionContextType = {
+  refreshTransactions: () => Promise<void>;
+};
+
+export const TransactionContext = createContext<TransactionContextType | null>(null);
+
+export function useTransactionRefresh() {
+  return useContext(TransactionContext);
+}
 
 export default function Transactions() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -45,8 +57,8 @@ export default function Transactions() {
     return null;
   };
   
-  // Fetch transaction history
-  const fetchTransactions = async () => {
+  // Make fetchTransactions a memoized callback so it can be used in the context
+  const fetchTransactions = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     
@@ -72,13 +84,13 @@ export default function Transactions() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [toast]); // Only depends on toast so it stays stable
   
   // Fetch transactions on component mount
   useEffect(() => {
     console.log("Transactions page mounted");
     fetchTransactions();
-  }, []);
+  }, [fetchTransactions]);
   
   // Function to view transaction details - would typically link to an explorer
   const handleViewTransaction = (transaction: Transaction) => {
@@ -87,7 +99,7 @@ export default function Transactions() {
   };
   
   return (
-    <>
+    <TransactionContext.Provider value={{ refreshTransactions: fetchTransactions }}>
       {/* Page header */}
       <div className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8">
@@ -187,6 +199,6 @@ export default function Transactions() {
           </CardContent>
         </Card>
       </div>
-    </>
+    </TransactionContext.Provider>
   );
 }

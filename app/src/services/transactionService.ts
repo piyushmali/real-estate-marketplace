@@ -132,22 +132,35 @@ export const getRecentBlockhash = async (token: string): Promise<{blockhash: str
 
 export const recordPropertySale = async (
   propertyId: string,
-  buyerWallet: string,
   sellerWallet: string,
+  buyerWallet: string,
   amount: number,
   transactionSignature: string,
   token: string
 ): Promise<any> => {
   try {
+    console.log("Recording property sale in database with the following details:");
+    console.log("- Property ID:", propertyId);
+    console.log("- Seller wallet:", sellerWallet);
+    console.log("- Buyer wallet:", buyerWallet);
+    console.log("- Amount:", amount);
+    console.log("- Transaction signature:", transactionSignature);
+
+    // Ensure we have all the required data
+    if (!propertyId || !sellerWallet || !buyerWallet || !amount || !transactionSignature) {
+      throw new Error("Missing required data for recording property sale");
+    }
+
     const response = await axios.post(
       `${API_URL}/api/transactions/record-sale`,
       {
         property_id: propertyId,
-        buyer_wallet: buyerWallet,
         seller_wallet: sellerWallet,
+        buyer_wallet: buyerWallet,
         amount: amount,
         transaction_signature: transactionSignature,
-        program_id: PROGRAM_ID.toString()
+        program_id: PROGRAM_ID.toString(),
+        timestamp: new Date().toISOString() // Add current timestamp
       },
       {
         headers: {
@@ -156,9 +169,16 @@ export const recordPropertySale = async (
         },
       }
     );
+    
+    console.log("Property sale recorded successfully:", response.data);
     return response.data;
   } catch (error) {
     console.error('Error recording property sale:', error);
+    // More detailed error logging
+    if (axios.isAxiosError(error) && error.response) {
+      console.error('Server response:', error.response.data);
+      console.error('Status code:', error.response.status);
+    }
     throw error;
   }
 };
