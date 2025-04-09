@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
@@ -64,6 +64,8 @@ export default function ExecuteSaleModal({
   const [isSeller, setIsSeller] = useState(false);
   const [property, setProperty] = useState<Property | null>(null);
   const transactionContext = useTransactionRefresh();
+  const [transactionCompleted, setTransactionCompleted] = useState(false);
+  const [transactionSignature, setTransactionSignature] = useState<string | null>(null);
   
   useEffect(() => {
     // Log debug info
@@ -572,7 +574,7 @@ export default function ExecuteSaleModal({
     }
   };
   
-  // Update the handleBuyerComplete function to use a direct Solana connection
+  // Update the handleBuyerComplete function to properly handle transaction updates
   const handleBuyerComplete = async () => {
     try {
       setIsSubmitting(true);
@@ -618,20 +620,27 @@ export default function ExecuteSaleModal({
         // Wait for confirmation
         toast({
           title: "Transaction Submitted",
-          description: "Waiting for confirmation..."
+          description: "Waiting for confirmation...",
+          duration: 10000, // longer duration for this notification
         });
         
         // Wait for confirmation with timeout
-        const confirmation = await Promise.race([
-          connection.confirmTransaction(signature),
-          new Promise((_, reject) => setTimeout(() => reject(new Error("Confirmation timeout")), 60000))
-        ]);
+        const confirmationPromise = connection.confirmTransaction(signature);
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error("Confirmation timeout")), 60000)
+        );
         
+        // Use Promise.race to implement timeout
+        const confirmation = await Promise.race([confirmationPromise, timeoutPromise]);
         console.log("Transaction confirmed:", confirmation);
         
-        // If we get here, the transaction was successful - now record it in the backend
+        // After transaction confirmation:
+        setTransactionSignature(signature);
+        
+        // If we get here, the transaction was successful
+        // Step 1: Record the sale in our backend
         if (token) {
-          // Now call the backend API to record the sale
+          console.log("Recording sale in backend database");
           try {
             const saleResult = await recordPropertySale(
               offer.property_id,
@@ -642,49 +651,63 @@ export default function ExecuteSaleModal({
               token
             );
             console.log("Sale recording API result:", saleResult);
+            
+            // Step 2: Update property ownership in the database
+            try {
+              console.log("Updating property ownership in backend");
+              const ownershipResult = await updatePropertyOwnership(
+                offer.property_id,
+                offer.buyer_wallet,
+                offer.id,  // Using the offer ID directly
+                signature,
+                token
+              );
+              console.log("Property ownership update result:", ownershipResult);
+            } catch (ownershipError) {
+              console.warn("Failed to update property ownership in backend:", ownershipError);
+              // Non-blocking error
+            }
+            
+            // Step 3: Explicitly refresh the transaction history
+            if (transactionContext) {
+              console.log("Refreshing transaction history");
+              try {
+                await transactionContext.refreshTransactions();
+                console.log("Transaction history refreshed successfully");
+              } catch (refreshError) {
+                console.warn("Failed to refresh transaction history:", refreshError);
+              }
+            } else {
+              console.warn("Transaction context not available, cannot refresh transaction history");
+            }
           } catch (recordError) {
             console.warn("Transaction successful but failed to record in backend:", recordError);
             // Non-blocking error, transaction already succeeded on chain
-          }
-          
-          // Also update property ownership in the database
-          try {
-            await updatePropertyOwnership(
-              offer.property_id,
-              offer.buyer_wallet,
-              offer.id.toString(),
-              signature,
-              token
-            );
-            console.log("Property ownership updated in database");
-          } catch (ownershipError) {
-            console.warn("Failed to update property ownership in backend:", ownershipError);
-            // Non-blocking error
           }
         } else {
           console.warn("Not authenticated, skipping backend updates");
         }
         
-        // Refresh transaction history if context is available
-        if (transactionContext) {
-          try {
-            await transactionContext.refreshTransactions();
-          } catch (refreshError) {
-            console.warn("Failed to refresh transaction history:", refreshError);
-          }
-        }
+        // Mark transaction as completed to trigger the useEffect
+        setTransactionCompleted(true);
         
+        // Show success toast
         toast({
           title: "Success",
-          description: "Property purchase complete! Ownership has been transferred."
+          description: "Property purchase complete! Ownership has been transferred.",
+          duration: 5000,
         });
         
-        // Close the modal and notify parent component
-        onSuccess();
-        onClose();
+        // Give a moment for the UI to update before closing the modal
+        setTimeout(() => {
+          // Close the modal and notify parent component
+          onSuccess();
+          onClose();
+        }, 1500);
+        
       } catch (sendError) {
-        console.error("Error sending transaction to Solana:", sendError);
-        let errorMessage = "Failed to send transaction to Solana";
+        console.error("Error sending or confirming transaction:", sendError);
+        let errorMessage = "Failed to send or confirm transaction";
         
         if (sendError instanceof Error) {
           errorMessage = sendError.message;
@@ -899,6 +922,31 @@ export default function ExecuteSaleModal({
       fetchPropertyDetails();
     }
   }, [visible, offer, token]);
+  
+  // Add an effect to refresh transactions when transaction is completed
+  useEffect(() => {
+    if (transactionCompleted && transactionSignature && transactionContext) {
+      console.log("Transaction completed, refreshing transaction history");
+      const refreshHistory = async () => {
+        try {
+          await transactionContext.refreshTransactions();
+          console.log("Transaction history refreshed after completion");
+        } catch (error) {
+          console.warn("Failed to refresh transaction history:", error);
+        }
+      };
+      
+      refreshHistory();
+    }
+  }, [transactionCompleted, transactionSignature, transactionContext]);
+  
+  // Reset state when modal is closed
+  useEffect(() => {
+    if (!visible) {
+      setTransactionCompleted(false);
+      setTransactionSignature(null);
+    }
+  }, [visible]);
   
   return (
     <Dialog open={visible} onOpenChange={(open) => !open && onClose()}>

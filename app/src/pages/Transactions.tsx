@@ -2,11 +2,12 @@ import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, Check, Clock } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { getTransactionHistory } from "@/services/transactionService";
 import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { createContext, useContext } from "react";
+import { Badge } from "@/components/ui/badge";
 
 // Define Transaction type
 interface Transaction {
@@ -16,12 +17,20 @@ interface Transaction {
   buyer_wallet: string;
   price: number;
   timestamp: string;
+  transaction_signature?: string;
+  status?: 'confirmed' | 'pending';
 }
 
 // Helper function to format wallet addresses
 const formatWalletAddress = (address: string) => {
   if (!address) return '';
   return `${address.substring(0, 6)}...${address.substring(address.length - 4)}`;
+};
+
+// Helper function to format transaction signatures
+const formatSignature = (signature: string) => {
+  if (!signature) return '';
+  return `${signature.substring(0, 6)}...${signature.substring(signature.length - 4)}`;
 };
 
 // Create a context to provide transaction refreshing functionality
@@ -92,10 +101,16 @@ export default function Transactions() {
     fetchTransactions();
   }, [fetchTransactions]);
   
-  // Function to view transaction details - would typically link to an explorer
+  // Function to view transaction details in the Solana Explorer
   const handleViewTransaction = (transaction: Transaction) => {
-    // In a real app, this would open the transaction in a blockchain explorer
-    window.open(`https://explorer.solana.com/tx/demo-tx-${transaction.id}?cluster=devnet`, '_blank');
+    // Check if we have a transaction signature to use
+    if (transaction.transaction_signature) {
+      // Open the transaction in Solana Explorer using the actual signature
+      window.open(`https://explorer.solana.com/tx/${transaction.transaction_signature}?cluster=devnet`, '_blank');
+    } else {
+      // Fallback to a demo link if no signature is available
+      window.open(`https://explorer.solana.com/tx/${transaction.id}?cluster=devnet`, '_blank');
+    }
   };
   
   return (
@@ -156,6 +171,7 @@ export default function Transactions() {
                       <TableHead>Buyer</TableHead>
                       <TableHead>Price</TableHead>
                       <TableHead>Date</TableHead>
+                      <TableHead>Status</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -179,11 +195,25 @@ export default function Transactions() {
                             {price.toFixed(2)} SOL
                           </TableCell>
                           <TableCell>{txDate}</TableCell>
+                          <TableCell>
+                            {tx.transaction_signature ? (
+                              <Badge variant="success" className="flex items-center">
+                                <Check className="h-3 w-3 mr-1" />
+                                Confirmed
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="flex items-center">
+                                <Clock className="h-3 w-3 mr-1" />
+                                Pending
+                              </Badge>
+                            )}
+                          </TableCell>
                           <TableCell className="text-right">
                             <Button 
                               variant="ghost" 
                               size="sm"
                               onClick={() => handleViewTransaction(tx)}
+                              title={tx.transaction_signature || "No signature available"}
                             >
                               <ExternalLink className="h-4 w-4 mr-1" />
                               View

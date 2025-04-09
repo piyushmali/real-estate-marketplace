@@ -151,17 +151,21 @@ export const recordPropertySale = async (
       throw new Error("Missing required data for recording property sale");
     }
 
+    const requestData = {
+      property_id: propertyId,
+      seller_wallet: sellerWallet,
+      buyer_wallet: buyerWallet,
+      amount: amount,
+      transaction_signature: transactionSignature,
+      program_id: PROGRAM_ID.toString(),
+      timestamp: new Date().toISOString() // Add current timestamp
+    };
+    
+    console.log("Sending record-sale request with data:", requestData);
+
     const response = await axios.post(
       `${API_URL}/api/transactions/record-sale`,
-      {
-        property_id: propertyId,
-        seller_wallet: sellerWallet,
-        buyer_wallet: buyerWallet,
-        amount: amount,
-        transaction_signature: transactionSignature,
-        program_id: PROGRAM_ID.toString(),
-        timestamp: new Date().toISOString() // Add current timestamp
-      },
+      requestData,
       {
         headers: {
           'Content-Type': 'application/json',
@@ -171,6 +175,15 @@ export const recordPropertySale = async (
     );
     
     console.log("Property sale recorded successfully:", response.data);
+    
+    // Explicitly fetch updated transaction history to ensure Transactions page will update
+    try {
+      await getTransactionHistory(token);
+      console.log("Transaction history refreshed after recording sale");
+    } catch (historyError) {
+      console.warn("Failed to refresh transaction history after recording sale:", historyError);
+    }
+    
     return response.data;
   } catch (error) {
     console.error('Error recording property sale:', error);
