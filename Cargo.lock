@@ -3441,6 +3441,8 @@ dependencies = [
  "serde_json",
  "solana-client",
  "solana-sdk",
+ "spl-associated-token-account 2.3.0",
+ "spl-token",
  "thiserror 1.0.69",
  "tokio",
  "tracing",

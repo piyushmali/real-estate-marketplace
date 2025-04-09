@@ -419,25 +419,58 @@ export default function RespondToOfferModal({
       }
       console.log("Escrow NFT account:", escrowNftAccount.toString());
       
-      // Check if the escrow NFT account is properly initialized as an SPL token account
+      // Create a new transaction
+      const transaction = new Transaction({
+        recentBlockhash: blockhash,
+        feePayer: publicKeyObj
+      });
+
+      // Check if the escrow NFT account exists and add a creation instruction if needed
       const escrowAccountInfo = await connection.getAccountInfo(escrowNftAccount);
       if (!escrowAccountInfo || escrowAccountInfo.owner.toString() !== TOKEN_PROGRAM_ID) {
-        console.error("Escrow NFT account is not initialized or not owned by the token program");
-        console.error("Account exists:", !!escrowAccountInfo);
-        if (escrowAccountInfo) {
-          console.error("Account owner:", escrowAccountInfo.owner.toString());
-          console.error("Expected owner (TOKEN_PROGRAM_ID):", TOKEN_PROGRAM_ID);
-        }
+        console.log("Escrow NFT account does not exist or is not properly initialized");
         
-        setErrors({ 
-          nft: "The escrow NFT account must be initialized as a token account before responding to an offer" 
-        });
-        toast({
-          title: "NFT Account Error",
-          description: "This transaction requires an initialized escrow NFT account. Looking at the test file, this account needs to be created by an admin or backend server before responding to offers."
-        });
-        setIsSubmitting(false);
-        return;
+        if (accept) {
+          // We need to create the token account for the escrow as part of our transaction
+          console.log("Creating escrow token account as part of the transaction");
+          
+          try {
+            // Create the Associated Token Account instruction for the escrow
+            const mintPubkey = new PublicKey(nftMintAddress);
+            
+            // Create instruction to initialize the escrow's associated token account
+            const createEscrowTokenAccountIx = token.createAssociatedTokenAccountInstruction(
+              publicKeyObj, // payer
+              escrowNftAccount, // associated token account address
+              escrowPDA, // owner (the escrow PDA)
+              mintPubkey // mint
+            );
+            
+            // Add this instruction FIRST to the transaction (before the respond to offer instruction)
+            transaction.add(createEscrowTokenAccountIx);
+            
+            console.log("Added instruction to create escrow token account:", escrowNftAccount.toString());
+            toast({
+              title: "Creating Escrow Account",
+              description: "Creating escrow token account as part of the transaction."
+            });
+          } catch (error) {
+            console.error("Error creating escrow token account instruction:", error);
+            setErrors({ 
+              nft: "Failed to create escrow token account instruction: " + 
+                   (error instanceof Error ? error.message : "Unknown error")
+            });
+            toast({
+              title: "Transaction Error",
+              description: "Failed to create escrow token account instruction."
+            });
+            setIsSubmitting(false);
+            return;
+          }
+        } else {
+          // For reject actions, we don't need the escrow token account
+          console.log("Escrow NFT account not needed for reject action, continuing...");
+        }
       }
       
       // Make sure we're not trying to accept our own offer
@@ -453,13 +486,7 @@ export default function RespondToOfferModal({
         return;
       }
       
-      // Create a new transaction
-      const transaction = new Transaction({
-        recentBlockhash: blockhash,
-        feePayer: publicKeyObj
-      });
-      
-      // Add the respond_to_offer instruction with all required accounts
+      // After potentially adding the escrow account creation instruction, add the respond_to_offer instruction
       const respondToOfferInstruction = createRespondToOfferInstruction(
         programId,
         propertyPDA,
@@ -860,11 +887,11 @@ export default function RespondToOfferModal({
     propertyMint: string
   ): Promise<PublicKey | null> => {
     try {
-      console.log(`Finding/creating escrow NFT account for property: ${propertyMint}`);
+      console.log(`Finding escrow NFT account for property: ${propertyMint}`);
       
       // For NFTs, we need the actual mint address
       if (!propertyMint) {
-        console.error("No NFT mint address provided - cannot create escrow token account");
+        console.error("No NFT mint address provided - cannot determine escrow token account");
         return null;
       }
       
@@ -872,7 +899,6 @@ export default function RespondToOfferModal({
       const mintPubkey = new PublicKey(propertyMint);
       console.log(`Using NFT mint address: ${mintPubkey.toString()}`);
       
-      // Get the escrow's associated token account for this mint
       try {
         // Calculate the escrow's associated token account address
         const escrowTokenAddress = token.getAssociatedTokenAddressSync(
@@ -896,21 +922,17 @@ export default function RespondToOfferModal({
           }
         } else {
           console.log("Escrow token account does not exist");
-          console.log("In the test file, this account is created using:");
-          console.log("token.getOrCreateAssociatedTokenAccount(connection, payerKeypair, mintPublicKey, escrowPDA, true)");
-          console.log("This requires a payer with a private key to sign the transaction");
-          console.log("This cannot be done directly from the frontend as we only have the user's wallet signer");
-          console.log("The backend or an admin tool would need to create this account");
+          console.log("Will create it as part of the transaction if needed");
         }
         
-        // Return the address regardless - we'll let the calling code check if it's valid
+        // Return the address regardless - we'll create it in the transaction if needed
         return escrowTokenAddress;
       } catch (err) {
         console.error("Error getting escrow token address:", err);
         return null;
       }
     } catch (error) {
-      console.error("Error getting or creating escrow NFT account:", error);
+      console.error("Error with escrow NFT account:", error);
       return null;
     }
   };

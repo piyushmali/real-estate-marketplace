@@ -149,4 +149,53 @@ export const getPropertyOffers = async (propertyId: string, token: string): Prom
     console.error('Error fetching property offers:', error);
     throw error;
   }
+};
+
+// Create escrow token account for a specific offer
+export const createEscrowTokenAccount = async (
+  offerId: string,
+  propertyId: string,
+  nftMintAddress: string,
+  buyerWallet: string,
+  token: string
+): Promise<{ success: boolean; escrowTokenAccount?: string; message: string }> => {
+  try {
+    console.log(`Creating escrow token account for offer: ${offerId}, property: ${propertyId}, NFT: ${nftMintAddress}, buyer: ${buyerWallet}`);
+    
+    const response = await axios.post(
+      `${API_URL}/api/offers/create-escrow-account`,
+      {
+        offer_id: offerId,
+        property_id: propertyId,
+        nft_mint_address: nftMintAddress,
+        buyer_wallet: buyerWallet
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+      }
+    );
+    
+    if (response.data && response.data.success) {
+      return {
+        success: true,
+        escrowTokenAccount: response.data.escrow_token_account,
+        message: response.data.message
+      };
+    } else {
+      console.warn("Unexpected response format:", response.data);
+      return {
+        success: false,
+        message: response.data.message || "Unknown error occurred"
+      };
+    }
+  } catch (error) {
+    console.error('Error creating escrow token account:', error);
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : "Unknown error occurred"
+    };
+  }
 }; 

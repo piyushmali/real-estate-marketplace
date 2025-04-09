@@ -628,6 +628,21 @@ pub struct CompleteNFTTransferResponse {
     pub nft_transaction_signature: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct CreateEscrowTokenAccountRequest {
+    pub offer_id: String,
+    pub property_id: String,
+    pub nft_mint_address: String,
+    pub buyer_wallet: Option<String>,  // Optional field to provide buyer wallet directly
+}
+
+#[derive(Debug, Serialize)]
+pub struct CreateEscrowTokenAccountResponse {
+    pub success: bool,
+    pub message: String,
+    pub escrow_token_account: Option<String>,
+}
+
 /// Handles the NFT transfer using admin authority after SOL payment has been completed
 pub async fn complete_nft_transfer(
     req: HttpRequest,
@@ -777,4 +792,201 @@ pub async fn update_property_ownership(
             })
         }
     }
+}
+
+// Add this function before update_property_ownership
+pub async fn create_escrow_token_account(
+    req: HttpRequest,
+    data: web::Json<CreateEscrowTokenAccountRequest>,
+) -> impl Responder {
+    // Verify authentication token
+    let _wallet_address = match verify_token(&req).await {
+        Ok(wallet) => wallet,
+        Err(resp) => return resp,
+    };
+
+    info!("Creating escrow token account for offer ID: {}", &data.offer_id);
+
+    let marketplace_program_id = match Pubkey::from_str("E7v7RResymJU5XvvPA9uwxGSEEsdSE6XvaP7BTV2GGoQ") {
+        Ok(pubkey) => pubkey,
+        Err(_) => return HttpResponse::BadRequest().body("Invalid program ID"),
+    };
+
+    let nft_mint = match Pubkey::from_str(&data.nft_mint_address) {
+        Ok(pubkey) => pubkey,
+        Err(_) => return HttpResponse::BadRequest().body("Invalid NFT mint address"),
+    };
+
+    // Derive the offer PDA
+    let property_pubkey = match get_property_pubkey(&data.property_id, &marketplace_program_id) {
+        Ok(pubkey) => pubkey,
+        Err(e) => return HttpResponse::BadRequest().body(format!("Error deriving property PDA: {}", e)),
+    };
+
+    // Get the offer from database to find the buyer's wallet
+    let mut conn = match db::establish_connection() {
+        Ok(conn) => conn,
+        Err(e) => {
+            error!("Failed to connect to database: {}", e);
+            return HttpResponse::InternalServerError().body("Database connection failed");
+        }
+    };
+
+    // Parse offer_id string to UUID
+    let offer_uuid = match Uuid::parse_str(&data.offer_id) {
+        Ok(uuid) => uuid,
+        Err(e) => {
+            error!("Invalid offer UUID format: {}", e);
+            return HttpResponse::BadRequest().body(format!("Invalid offer ID format: {}", e));
+        }
+    };
+
+    // Get the offer from the database
+    use crate::schema::offers::dsl::{offers, id, buyer_wallet as offer_buyer_wallet};
+    let offer_result = offers
+        .filter(id.eq(offer_uuid))
+        .select(offer_buyer_wallet)
+        .first::<String>(&mut conn);
+
+    let buyer_wallet_address = match offer_result {
+        Ok(wallet) => wallet,
+        Err(e) => {
+            error!("Error fetching offer buyer wallet: {}", e);
+            return HttpResponse::InternalServerError().body(format!("Error fetching offer: {}", e));
+        }
+    };
+
+    let buyer_pubkey = if let Some(buyer_wallet) = &data.buyer_wallet {
+        match Pubkey::from_str(buyer_wallet) {
+            Ok(pubkey) => pubkey,
+            Err(_) => return HttpResponse::BadRequest().body("Invalid buyer wallet address in request"),
+        }
+    } else {
+        match Pubkey::from_str(&buyer_wallet_address) {
+            Ok(pubkey) => pubkey,
+            Err(_) => return HttpResponse::BadRequest().body("Invalid buyer wallet address"),
+        }
+    };
+
+    let (offer_pda, _) = Pubkey::find_program_address(
+        &[
+            b"offer", 
+            property_pubkey.as_ref(), 
+            buyer_pubkey.as_ref()
+        ],
+        &marketplace_program_id,
+    );
+
+    // Derive the escrow PDA
+    let (escrow_pda, _) = Pubkey::find_program_address(
+        &[b"escrow", offer_pda.as_ref()],
+        &marketplace_program_id,
+    );
+
+    // Offload blocking RPC call to a separate thread
+    let escrow_token_account = match web::block(move || {
+        // Create a connection to Solana devnet
+        let rpc_client = RpcClient::new("https://api.devnet.solana.com".to_string());
+        
+        // Get the admin keypair from environment (this should be securely managed)
+        let admin_keypair_base58 = std::env::var("ADMIN_KEYPAIR").expect("ADMIN_KEYPAIR must be set");
+        let admin_keypair_bytes = bs58::decode(&admin_keypair_base58).into_vec().unwrap();
+        let admin_keypair = Keypair::from_bytes(&admin_keypair_bytes).unwrap();
+        
+        // Create Associated Token Account for escrow
+        // Import spl token libraries here to avoid conflicts
+        use spl_associated_token_account::{
+            get_associated_token_address_with_program_id,
+            instruction::create_associated_token_account,
+        };
+        use spl_token::id as token_program_id;
+        
+        // Calculate the escrow's token account address
+        let escrow_token_account = get_associated_token_address_with_program_id(
+            &escrow_pda,
+            &nft_mint,
+            &token_program_id()
+        );
+        
+        // Check if the token account already exists
+        if let Ok(_) = rpc_client.get_account(&escrow_token_account) {
+            // Account already exists, return it
+            info!("Escrow token account already exists: {}", escrow_token_account);
+            return Ok::<Pubkey, anyhow::Error>(escrow_token_account);
+        }
+        
+        // Create instruction to make the token account
+        let create_ata_ix = create_associated_token_account(
+            &admin_keypair.pubkey(),  // Fee payer
+            &escrow_pda,              // Account owner (escrow PDA)
+            &nft_mint,                // Token mint
+            &token_program_id(),      // Token program ID
+        );
+        
+        // Create transaction
+        let recent_blockhash = rpc_client.get_latest_blockhash()?;
+        let message = Message::new(&[create_ata_ix], Some(&admin_keypair.pubkey()));
+        let mut tx = SolanaTransaction::new(&[&admin_keypair], message, recent_blockhash);
+        
+        // Send and confirm transaction
+        let signature = rpc_client.send_and_confirm_transaction(&tx)?;
+        info!("Created escrow token account: {} with signature: {}", escrow_token_account, signature);
+        
+        Ok::<Pubkey, anyhow::Error>(escrow_token_account)
+    }).await {
+        Ok(Ok(account)) => account,
+        Ok(Err(e)) => {
+            error!("Error creating escrow token account: {}", e);
+            return HttpResponse::InternalServerError().json(CreateEscrowTokenAccountResponse {
+                success: false,
+                message: format!("Failed to create escrow token account: {}", e),
+                escrow_token_account: None,
+            });
+        },
+        Err(e) => {
+            error!("Thread pool error: {}", e);
+            return HttpResponse::InternalServerError().json(CreateEscrowTokenAccountResponse {
+                success: false,
+                message: format!("Thread pool error: {}", e),
+                escrow_token_account: None,
+            });
+        },
+    };
+
+    HttpResponse::Ok().json(CreateEscrowTokenAccountResponse {
+        success: true,
+        message: "Escrow token account created successfully".to_string(),
+        escrow_token_account: Some(escrow_token_account.to_string()),
+    })
+}
+
+// Create a new function that gets the marketplace PDA and the marketplace account's authority
+fn get_marketplace_info(program_id: &Pubkey) -> Result<(Pubkey, Pubkey), anyhow::Error> {
+    // First try with the connected wallet we observed
+    let authority = match Pubkey::from_str("A9xYe8XDnCRyPdy7B75B5PT7JP9ktLtxi6xMBVa7C4Xd") {
+        Ok(pubkey) => pubkey,
+        Err(_) => return Err(anyhow::anyhow!("Invalid authority public key")),
+    };
+    
+    let (marketplace_pda, _) = Pubkey::find_program_address(
+        &[b"marketplace", authority.as_ref()],
+        program_id,
+    );
+    
+    // In a production environment, we would query the blockchain to get the marketplace account
+    // and extract the authority from it.
+    
+    Ok((marketplace_pda, authority))
+}
+
+// Helper function to derive property PDA
+fn get_property_pubkey(property_id: &str, program_id: &Pubkey) -> Result<Pubkey, anyhow::Error> {
+    let (marketplace_pda, _) = get_marketplace_info(program_id)?;
+    
+    let (property_pda, _) = Pubkey::find_program_address(
+        &[b"property", marketplace_pda.as_ref(), property_id.as_bytes()],
+        program_id,
+    );
+    
+    Ok(property_pda)
 } 

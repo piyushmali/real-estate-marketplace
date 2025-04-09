@@ -147,6 +147,8 @@ async fn main() -> std::io::Result<()> {
             // New endpoints for our workaround solution
             .route("/api/transactions/complete-transfer", web::post().to(transaction::complete_nft_transfer))
             .route("/api/properties/update-ownership", web::post().to(transaction::update_property_ownership))
+            // New endpoint to create escrow token account
+            .route("/api/offers/create-escrow-account", web::post().to(transaction::create_escrow_token_account))
     })
     .bind(("127.0.0.1", port))?
     .run()
