@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
-import { PublicKey, Transaction, LAMPORTS_PER_SOL, Connection, SystemProgram } from '@solana/web3.js';
+import { PublicKey, Transaction, LAMPORTS_PER_SOL, Connection, SystemProgram, TransactionInstruction } from '@solana/web3.js';
 import { BN } from '@project-serum/anchor';
 import { Offer } from "@/types/offer";
 import { respondToOffer } from "../services/offerService";
@@ -10,11 +10,25 @@ import { submitTransactionNoUpdate, getRecentBlockhash, recordPropertySale, simu
 import { useWallet } from "@/hooks/useWallet";
 import { useAuth } from "@/hooks/useAuth";
 import { getToken } from "@/lib/auth";
+import * as token from "@solana/spl-token";
+import axios from "axios";
 
 // Define constants
 const MARKETPLACE_PROGRAM_ID = "E7v7RResymJU5XvvPA9uwxGSEEsdSE6XvaP7BTV2GGoQ";
 const SOLANA_RPC_ENDPOINT = "https://api.devnet.solana.com";
 const TOKEN_PROGRAM_ID = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+const API_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8080";
+
+// Define property interface
+interface Property {
+  property_id: string;
+  owner: string;
+  price: number;
+  is_active: boolean;
+  nft_mint_address?: string;
+  nft_mint?: string;
+  nft_token_account?: string;
+}
 
 interface RespondToOfferModalProps {
   offer: Offer;
@@ -22,6 +36,13 @@ interface RespondToOfferModalProps {
   onClose: () => void;
   onSuccess: () => void;
   propertyNftMint?: string;
+}
+
+// Define the return type for submitTransactionNoUpdate to match API
+interface TransactionSubmitResponse {
+  success: boolean;
+  signature?: string;
+  message?: string;
 }
 
 export default function RespondToOfferModal({
@@ -37,9 +58,11 @@ export default function RespondToOfferModal({
   const [showLogs, setShowLogs] = useState(false);
   const [offerAccepted, setOfferAccepted] = useState(false);
   const [transactionSignature, setTransactionSignature] = useState<string | null>(null);
+  const [property, setProperty] = useState<Property | null>(null);
+  const [isLoadingProperty, setIsLoadingProperty] = useState(false);
   const { toast } = useToast();
   const { publicKey, publicKeyObj, signTransaction, connected } = useWallet();
-  const { token } = useAuth();
+  const { token: authToken } = useAuth();
 
   // If seller_wallet is missing, use the current wallet as the seller
   const effectiveSeller = offer.seller_wallet || (publicKey || "");
@@ -47,6 +70,9 @@ export default function RespondToOfferModal({
   // Determine if connected wallet is buyer or seller
   const isBuyer = publicKey === offer.buyer_wallet;
   const isSeller = publicKey === effectiveSeller;
+
+  // Determine which NFT mint address to use
+  const nftMintAddress = propertyNftMint || property?.nft_mint_address || property?.nft_mint;
 
   // Reset state when modal is closed
   useEffect(() => {
@@ -56,6 +82,7 @@ export default function RespondToOfferModal({
       setShowLogs(false);
       setOfferAccepted(false);
       setTransactionSignature(null);
+      setProperty(null);
     }
   }, [visible]);
 
@@ -66,13 +93,81 @@ export default function RespondToOfferModal({
     }
   }, [offer]);
 
+  // Fetch property details when the modal is opened
+  useEffect(() => {
+    if (visible && offer.property_id && authToken) {
+      fetchPropertyDetails(offer.property_id, authToken);
+    }
+  }, [visible, offer.property_id, authToken]);
+
+  // Function to fetch property details from the backend
+  const fetchPropertyDetails = async (propertyId: string, token: string) => {
+    setIsLoadingProperty(true);
+    try {
+      console.log(`Fetching property details for: ${propertyId}`);
+      
+      // First try to get the dedicated NFT mint information
+      const nftMintResponse = await axios.get(
+        `${API_URL}/api/properties/${propertyId}/nft-mint`,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        }
+      );
+      
+      if (nftMintResponse.data && nftMintResponse.data.nft_mint_address) {
+        console.log("NFT mint address fetched:", nftMintResponse.data.nft_mint_address);
+        setProperty({
+          property_id: propertyId,
+          owner: nftMintResponse.data.owner_wallet,
+          price: 0, // This endpoint doesn't return price
+          is_active: true,
+          nft_mint_address: nftMintResponse.data.nft_mint_address
+        });
+        return;
+      }
+      
+      // If the specific endpoint fails, fall back to the full property endpoint
+      const response = await axios.get(
+        `${API_URL}/api/properties/${propertyId}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        }
+      );
+      
+      if (response.data) {
+        const propertyData = response.data;
+        console.log("Property details fetched:", propertyData);
+        setProperty(propertyData);
+        
+        if (!propertyData.nft_mint_address && !propertyData.nft_mint) {
+          console.warn("Property doesn't have an NFT mint address");
+          setErrors({ nft: "Property NFT mint address not found in database" });
+        } else {
+          console.log(`Found NFT mint address: ${propertyData.nft_mint_address || propertyData.nft_mint}`);
+        }
+      } else {
+        console.error("Failed to fetch property:", response.data);
+        setErrors({ property: "Failed to fetch property details" });
+      }
+    } catch (error) {
+      console.error("Error fetching property:", error);
+      setErrors({ property: `Error fetching property: ${(error as Error).message}` });
+    } finally {
+      setIsLoadingProperty(false);
+    }
+  };
+
   // Function to get a recent blockhash
   const fetchRecentBlockhash = async () => {
     try {
-      if (!token) {
+      if (!authToken) {
         throw new Error("Authentication token is required to fetch blockhash");
       }
-      const response = await getRecentBlockhash(token);
+      const response = await getRecentBlockhash(authToken);
       console.log("Got blockhash:", response.blockhash);
       return response.blockhash;
     } catch (error) {
@@ -92,7 +187,7 @@ export default function RespondToOfferModal({
     sellerNftAccount: PublicKey,
     escrowNftAccount: PublicKey,
     accept: boolean
-  ) => {
+  ): TransactionInstruction => {
     console.log("Creating respond_to_offer instruction with the following parameters:");
     console.log(`- Program ID: ${programId.toString()}`);
     console.log(`- Property PDA: ${propertyPda.toString()}`);
@@ -104,20 +199,21 @@ export default function RespondToOfferModal({
     console.log(`- Escrow NFT account: ${escrowNftAccount.toString()}`);
     console.log(`- Accept: ${accept}`);
     
-    // Construct the instruction data for respond_to_offer
-    // 8 bytes instruction discriminator + 1 byte for boolean
-    const dataLayout = new Uint8Array(8 + 1);
+    // Use the exact discriminator from IDL for respond_to_offer
+    const instructionDiscriminator = Buffer.from([143, 248, 12, 134, 212, 199, 41, 123]);
     
-    // Set the instruction discriminator for respond_to_offer from the IDL
-    const instructionDiscriminator = new Uint8Array([143, 248, 12, 134, 212, 199, 41, 123]);
-    dataLayout.set(instructionDiscriminator, 0);
+    // Create a buffer for the entire data payload
+    // 8 bytes for discriminator + 1 byte for boolean
+    const dataLayout = Buffer.alloc(9);
+    
+    // Copy the discriminator into the buffer
+    instructionDiscriminator.copy(dataLayout, 0);
     
     // Set the boolean value (1 for true, 0 for false)
-    dataLayout.set([accept ? 1 : 0], 8);
+    dataLayout[8] = accept ? 1 : 0;
     
     // Create the instruction with accounts in the right order according to RespondToOffer struct
-    return {
-      programId,
+    return new TransactionInstruction({
       keys: [
         { pubkey: propertyPda, isSigner: false, isWritable: true },     // property
         { pubkey: offerPda, isSigner: false, isWritable: true },       // offer
@@ -126,9 +222,11 @@ export default function RespondToOfferModal({
         { pubkey: buyerWallet, isSigner: false, isWritable: true },    // buyer
         { pubkey: sellerNftAccount, isSigner: false, isWritable: true }, // seller_nft_account
         { pubkey: escrowNftAccount, isSigner: false, isWritable: true }, // escrow_nft_account
+        { pubkey: new PublicKey(TOKEN_PROGRAM_ID), isSigner: false, isWritable: false }, // token_program
       ],
-      data: Buffer.from(dataLayout)
-    };
+      programId: programId,
+      data: dataLayout
+    });
   };
 
   // Create a SOL transfer instruction (simple payment from buyer to seller)
@@ -177,37 +275,41 @@ export default function RespondToOfferModal({
       setErrors({});
       
       // Check if wallet is connected
-      if (!publicKey) {
+      if (!publicKey || !publicKeyObj || !signTransaction) {
         setErrors({ wallet: "Please connect your wallet first" });
         toast({
           title: "Wallet Error",
           description: "Please connect your wallet first"
         });
+        setIsSubmitting(false);
         return;
       }
       
       // Check if user is authenticated
-      const authToken = getToken();
       if (!authToken) {
         setErrors({ auth: "You must be logged in to respond to offers" });
         toast({
           title: "Authentication Error",
           description: "You must be logged in to respond to offers"
         });
+        setIsSubmitting(false);
         return;
       }
       
       // Verify that the connected wallet is the seller
-      const publicKeyObj = new PublicKey(publicKey);
       console.log("Comparing Wallets for Offer Response:");
       console.log("Connected PublicKey:", publicKeyObj.toString());
       console.log("Offer Seller Wallet:", offer.seller_wallet);
-      if (publicKeyObj.toString() !== offer.seller_wallet) {
+      
+      // If offer.seller_wallet is undefined, assume the connected wallet is the seller
+      // This covers cases where the seller wallet wasn't saved with the offer
+      if (offer.seller_wallet && publicKeyObj.toString() !== offer.seller_wallet) {
         setErrors({ wallet: "You must be the property seller to respond to this offer" });
         toast({
           title: "Wallet Error",
           description: "You must be the property seller to respond to this offer"
         });
+        setIsSubmitting(false);
         return;
       }
       
@@ -267,29 +369,76 @@ export default function RespondToOfferModal({
       );
       console.log("Escrow PDA:", escrowPDA.toString());
       
+      // We need a valid NFT mint to proceed
+      if (!nftMintAddress) {
+        setErrors({ nft: "Property NFT mint address is required but was not provided" });
+        toast({
+          title: "NFT Error",
+          description: "Property NFT mint address is required but was not provided. Try refreshing the property details."
+        });
+        setIsSubmitting(false);
+        return;
+      }
+      
+      try {
+        // Validate the NFT mint address is a valid PublicKey
+        new PublicKey(nftMintAddress);
+      } catch (e) {
+        setErrors({ nft: "Invalid NFT mint address format" });
+        toast({
+          title: "NFT Error",
+          description: "The NFT mint address provided is not in a valid format"
+        });
+        setIsSubmitting(false);
+        return;
+      }
+      
       // Get the seller's NFT account
-      const sellerNftAccount = await getNftAccount(publicKeyObj, offer.property_id);
+      const sellerNftAccount = await getNftAccount(connection, publicKeyObj, nftMintAddress);
       if (!sellerNftAccount) {
         setErrors({ nft: "Could not find seller's NFT account" });
         toast({
           title: "NFT Error",
-          description: "Could not find seller's NFT account"
+          description: "Could not find seller's NFT account for this property"
         });
+        setIsSubmitting(false);
         return;
       }
       console.log("Seller NFT account:", sellerNftAccount.toString());
       
       // Get or create the escrow NFT account
-      const escrowNftAccount = await getOrCreateEscrowNftAccount(escrowPDA, offer.property_id);
+      const escrowNftAccount = await getOrCreateEscrowNftAccount(connection, escrowPDA, nftMintAddress);
       if (!escrowNftAccount) {
         setErrors({ nft: "Could not create escrow NFT account" });
         toast({
           title: "NFT Error",
           description: "Could not create escrow NFT account"
         });
+        setIsSubmitting(false);
         return;
       }
       console.log("Escrow NFT account:", escrowNftAccount.toString());
+      
+      // Check if the escrow NFT account is properly initialized as an SPL token account
+      const escrowAccountInfo = await connection.getAccountInfo(escrowNftAccount);
+      if (!escrowAccountInfo || escrowAccountInfo.owner.toString() !== TOKEN_PROGRAM_ID) {
+        console.error("Escrow NFT account is not initialized or not owned by the token program");
+        console.error("Account exists:", !!escrowAccountInfo);
+        if (escrowAccountInfo) {
+          console.error("Account owner:", escrowAccountInfo.owner.toString());
+          console.error("Expected owner (TOKEN_PROGRAM_ID):", TOKEN_PROGRAM_ID);
+        }
+        
+        setErrors({ 
+          nft: "The escrow NFT account must be initialized as a token account before responding to an offer" 
+        });
+        toast({
+          title: "NFT Account Error",
+          description: "This transaction requires an initialized escrow NFT account. Looking at the test file, this account needs to be created by an admin or backend server before responding to offers."
+        });
+        setIsSubmitting(false);
+        return;
+      }
       
       // Make sure we're not trying to accept our own offer
       if (buyerWallet.equals(publicKeyObj)) {
@@ -352,6 +501,8 @@ export default function RespondToOfferModal({
               errorMessage = "Invalid NFT account.";
             } else if (errJson.includes("AccountNotSigner")) {
               errorMessage = "Transaction signing failed. Please try again.";
+            } else if (errJson.includes("ConstraintRaw")) {
+              errorMessage = "NFT token account constraint violated. You may not own the NFT for this property.";
             }
           }
           
@@ -395,21 +546,17 @@ export default function RespondToOfferModal({
         // Encode the signed transaction
         const encodedTransaction = Buffer.from(signedTransaction.serialize()).toString('base64');
         
-        // Submit transaction to our backend without updating the backend state
-        const submitResult = await submitTransactionNoUpdate(encodedTransaction, authToken);
-        
-        if (!submitResult.success) {
-          throw new Error(submitResult.message || "Transaction submission failed");
-        }
-        
-        console.log("Transaction submitted to Solana:", submitResult);
+        // Submit transaction to our backend
+        const transactionSignature = await submitTransactionNoUpdate(encodedTransaction, authToken);
+        console.log("Transaction submitted to Solana:", transactionSignature);
         
         // Now call the backend API to update the offer status
         const offerResponse = await respondToOffer(
           offer.id,
           accept ? 'accepted' : 'rejected',
-          submitResult.signature || "transaction-signature-placeholder",
-          authToken
+          transactionSignature,
+          authToken,
+          publicKey // Pass the seller wallet
         );
         
         console.log("Offer response API result:", offerResponse);
@@ -419,7 +566,7 @@ export default function RespondToOfferModal({
         }
         
         // Store signature for use in the next step
-        setTransactionSignature(submitResult.signature || null);
+        setTransactionSignature(transactionSignature);
         
         toast({
           title: accept ? "Offer Accepted" : "Offer Rejected",
@@ -457,6 +604,7 @@ export default function RespondToOfferModal({
         title: "Error",
         description: "An error occurred while processing your request"
       });
+    } finally {
       setIsSubmitting(false);
     }
   };
@@ -467,7 +615,7 @@ export default function RespondToOfferModal({
       setIsSubmitting(true);
       setErrors({});
 
-      if (!publicKeyObj || !signTransaction || !token) {
+      if (!publicKeyObj || !signTransaction || !authToken) {
         setErrors({ wallet: "Wallet not connected or not authenticated" });
         toast({
           title: "Wallet Error",
@@ -587,14 +735,9 @@ export default function RespondToOfferModal({
         // Encode the signed transaction
         const encodedTransaction = Buffer.from(signedTransaction.serialize()).toString('base64');
 
-        // Submit transaction to our backend without updating the backend state
-        const submitResult = await submitTransactionNoUpdate(encodedTransaction, token);
-
-        if (!submitResult.success) {
-          throw new Error(submitResult.message || "Transaction submission failed");
-        }
-
-        console.log("Transaction submitted to Solana:", submitResult);
+        // Submit transaction to our backend
+        const transactionSignature = await submitTransactionNoUpdate(encodedTransaction, authToken);
+        console.log("Transaction submitted to Solana:", transactionSignature);
 
         // Now call the backend API to record the sale
         const saleResponse = await recordPropertySale(
@@ -602,8 +745,8 @@ export default function RespondToOfferModal({
           offer.buyer_wallet,
           offer.seller_wallet,
           offer.amount,
-          submitResult.signature || "transaction-signature-placeholder",
-          token
+          transactionSignature,
+          authToken
         );
 
         console.log("Sale recording API result:", saleResponse);
@@ -638,6 +781,7 @@ export default function RespondToOfferModal({
         title: "Error",
         description: "An error occurred while processing your request"
       });
+    } finally {
       setIsSubmitting(false);
     }
   };
@@ -663,22 +807,46 @@ export default function RespondToOfferModal({
   };
 
   // Helper function to get the NFT account for a property
-  const getNftAccount = async (owner: PublicKey, propertyId: string): Promise<PublicKey | null> => {
+  const getNftAccount = async (
+    connection: Connection, 
+    owner: PublicKey, 
+    propertyMint: string
+  ): Promise<PublicKey | null> => {
     try {
-      // Get all token accounts owned by the owner
-      const tokenAccounts = await connection.getParsedTokenAccountsByOwner(owner, {
-        programId: TOKEN_PROGRAM_ID
-      });
+      console.log(`Looking for NFT account for property: ${propertyMint} owned by ${owner.toString()}`);
       
-      // Find the token account that contains the property NFT
-      for (const { account } of tokenAccounts.value) {
-        const tokenData = account.data.parsed.info;
-        if (tokenData.mint === propertyId) {
-          return new PublicKey(tokenData.pubkey);
-        }
+      // For NFTs, we need the actual mint address
+      if (!propertyMint) {
+        console.error("No NFT mint address provided - cannot locate token account");
+        return null;
       }
       
-      return null;
+      // Use the provided NFT mint address
+      const mintPubkey = new PublicKey(propertyMint);
+      console.log(`Using NFT mint address: ${mintPubkey.toString()}`);
+      
+      // Get the associated token account for this owner and mint
+      try {
+        const tokenAccountAddress = token.getAssociatedTokenAddressSync(
+          mintPubkey,
+          owner
+        );
+        console.log(`Using associated token account: ${tokenAccountAddress.toString()}`);
+        
+        // Check if this account exists
+        const tokenAccountInfo = await connection.getAccountInfo(tokenAccountAddress);
+        if (tokenAccountInfo) {
+          console.log("Token account exists");
+          return tokenAccountAddress;
+        } else {
+          console.log("Token account does not exist, would need to be created");
+          // In a real app, we would create the account here
+          return tokenAccountAddress; // Return the address anyway for testing
+        }
+      } catch (err) {
+        console.error("Error getting associated token address:", err);
+        return null;
+      }
     } catch (error) {
       console.error("Error getting NFT account:", error);
       return null;
@@ -686,24 +854,61 @@ export default function RespondToOfferModal({
   };
   
   // Helper function to get or create the escrow NFT account
-  const getOrCreateEscrowNftAccount = async (escrowPda: PublicKey, propertyId: string): Promise<PublicKey | null> => {
+  const getOrCreateEscrowNftAccount = async (
+    connection: Connection,
+    escrowPda: PublicKey, 
+    propertyMint: string
+  ): Promise<PublicKey | null> => {
     try {
-      // First try to find an existing escrow NFT account
-      const tokenAccounts = await connection.getParsedTokenAccountsByOwner(escrowPda, {
-        programId: TOKEN_PROGRAM_ID
-      });
+      console.log(`Finding/creating escrow NFT account for property: ${propertyMint}`);
       
-      // Find the token account that contains the property NFT
-      for (const { account } of tokenAccounts.value) {
-        const tokenData = account.data.parsed.info;
-        if (tokenData.mint === propertyId) {
-          return new PublicKey(tokenData.pubkey);
-        }
+      // For NFTs, we need the actual mint address
+      if (!propertyMint) {
+        console.error("No NFT mint address provided - cannot create escrow token account");
+        return null;
       }
       
-      // If no existing account found, create a new one
-      // This will be handled by the program when accepting the offer
-      return null;
+      // Use the provided NFT mint address
+      const mintPubkey = new PublicKey(propertyMint);
+      console.log(`Using NFT mint address: ${mintPubkey.toString()}`);
+      
+      // Get the escrow's associated token account for this mint
+      try {
+        // Calculate the escrow's associated token account address
+        const escrowTokenAddress = token.getAssociatedTokenAddressSync(
+          mintPubkey,
+          escrowPda,
+          true // Allow the PDA to own the token account
+        );
+        
+        console.log(`Escrow token account address: ${escrowTokenAddress.toString()}`);
+        
+        // Check if this account exists
+        const tokenAccountInfo = await connection.getAccountInfo(escrowTokenAddress);
+        if (tokenAccountInfo) {
+          console.log("Escrow token account exists");
+          console.log("Account owner:", tokenAccountInfo.owner.toString());
+          console.log("Expected owner (TOKEN_PROGRAM_ID):", TOKEN_PROGRAM_ID);
+          
+          // Verify it's owned by the Token Program
+          if (tokenAccountInfo.owner.toString() !== TOKEN_PROGRAM_ID) {
+            console.error("WARNING: Escrow token account exists but is not owned by the Token Program");
+          }
+        } else {
+          console.log("Escrow token account does not exist");
+          console.log("In the test file, this account is created using:");
+          console.log("token.getOrCreateAssociatedTokenAccount(connection, payerKeypair, mintPublicKey, escrowPDA, true)");
+          console.log("This requires a payer with a private key to sign the transaction");
+          console.log("This cannot be done directly from the frontend as we only have the user's wallet signer");
+          console.log("The backend or an admin tool would need to create this account");
+        }
+        
+        // Return the address regardless - we'll let the calling code check if it's valid
+        return escrowTokenAddress;
+      } catch (err) {
+        console.error("Error getting escrow token address:", err);
+        return null;
+      }
     } catch (error) {
       console.error("Error getting or creating escrow NFT account:", error);
       return null;
@@ -725,6 +930,12 @@ export default function RespondToOfferModal({
           </DialogHeader>
           
           <div className="space-y-4">
+            {isLoadingProperty && (
+              <div className="bg-blue-50 p-4 rounded-md">
+                <p className="text-blue-700">Loading property details...</p>
+              </div>
+            )}
+            
             <div className="bg-gray-50 p-4 rounded-md">
               <h3 className="text-sm font-medium text-gray-700 mb-2">About this transaction</h3>
               <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
@@ -742,6 +953,13 @@ export default function RespondToOfferModal({
                 
                 <div className="text-gray-500">Status:</div>
                 <div className="text-gray-900">{offerAccepted ? "Accepted" : offer.status}</div>
+                
+                <div className="text-gray-500">NFT Mint:</div>
+                {nftMintAddress ? (
+                  <div className="text-gray-900 font-mono text-xs break-all">{nftMintAddress}</div>
+                ) : (
+                  <div className="text-red-600 font-medium">Missing - Cannot proceed without NFT mint</div>
+                )}
               </div>
             </div>
             
@@ -804,6 +1022,20 @@ export default function RespondToOfferModal({
               </div>
             )}
             
+            {errors.property && (
+              <div className="bg-red-50 p-4 rounded-md text-sm text-red-800">
+                <p className="font-medium">Property Error:</p>
+                <p className="mt-1">{errors.property}</p>
+              </div>
+            )}
+            
+            {errors.nft && (
+              <div className="bg-red-50 p-4 rounded-md text-sm text-red-800">
+                <p className="font-medium">NFT Error:</p>
+                <p className="mt-1">{errors.nft}</p>
+              </div>
+            )}
+            
             {showLogs && simulationLogs.length > 0 && (
               <div className="bg-gray-800 p-4 rounded-md text-xs text-gray-200 font-mono overflow-x-auto max-h-40 overflow-y-auto">
                 <div className="flex justify-between items-center mb-2">
@@ -836,7 +1068,7 @@ export default function RespondToOfferModal({
               Cancel
             </Button>
             
-            {!offerAccepted && isSeller && connected && publicKeyObj && (
+            {!offerAccepted && isSeller && connected && publicKeyObj && !isLoadingProperty && nftMintAddress && (
               <>
                 <Button
                   variant="destructive"
