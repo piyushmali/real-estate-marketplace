@@ -570,49 +570,58 @@ export default function RespondToOfferModal({
           description: "Please wait while we process your response..."
         });
         
-        // Encode the signed transaction
-        const encodedTransaction = Buffer.from(signedTransaction.serialize()).toString('base64');
-        
-        // Submit transaction to our backend
-        const transactionSignature = await submitTransactionNoUpdate(encodedTransaction, authToken);
-        console.log("Transaction submitted to Solana:", transactionSignature);
-        
-        // Now call the backend API to update the offer status
-        const offerResponse = await respondToOffer(
-          offer.id,
-          accept ? 'accepted' : 'rejected',
-          transactionSignature,
-          authToken,
-          publicKey // Pass the seller wallet
-        );
-        
-        console.log("Offer response API result:", offerResponse);
-        
-        if (!offerResponse.success) {
-          throw new Error(offerResponse.message || "Failed to update offer status");
+        // Submit directly to Solana instead of using the backend
+        console.log("Submitting transaction directly to Solana...");
+        try {
+          const connection = new Connection(SOLANA_RPC_ENDPOINT, "confirmed");
+          const signature = await connection.sendRawTransaction(signedTransaction.serialize());
+          console.log("Transaction sent to Solana:", signature);
+          
+          // Now call the backend API to update the offer status
+          const offerResponse = await respondToOffer(
+            offer.id,
+            accept ? 'accepted' : 'rejected',
+            signature,
+            authToken,
+            publicKey // Pass the seller wallet
+          );
+          
+          console.log("Offer response API result:", offerResponse);
+          
+          if (!offerResponse.success) {
+            throw new Error(offerResponse.message || "Failed to update offer status");
+          }
+          
+          // Store signature for use in the next step
+          setTransactionSignature(signature);
+          
+          toast({
+            title: accept ? "Offer Accepted" : "Offer Rejected",
+            description: accept 
+              ? "You have successfully accepted the offer! The buyer can now complete the purchase."
+              : "You have rejected the offer."
+          });
+          
+          // Set offer as accepted if we accepted it
+          if (accept) {
+            setOfferAccepted(true);
+          }
+          
+          // If we're rejecting, we're done
+          if (!accept) {
+            onSuccess();
+            onClose();
+          }
+        } catch (sendError) {
+          console.error("Error sending transaction to Solana:", sendError);
+          setErrors({ transaction: `Error sending transaction: ${(sendError as Error).message}` });
+          toast({
+            title: "Transaction Error",
+            description: `Failed to send transaction to Solana: ${(sendError as Error).message}`
+          });
+          setIsSubmitting(false);
+          return;
         }
-        
-        // Store signature for use in the next step
-        setTransactionSignature(transactionSignature);
-        
-        toast({
-          title: accept ? "Offer Accepted" : "Offer Rejected",
-          description: accept 
-            ? "You have successfully accepted the offer! The buyer can now complete the purchase."
-            : "You have rejected the offer."
-        });
-        
-        // Set offer as accepted if we accepted it
-        if (accept) {
-          setOfferAccepted(true);
-        }
-        
-        // If we're rejecting, we're done
-        if (!accept) {
-          onSuccess();
-          onClose();
-        }
-        
       } catch (signError) {
         console.error("Error signing or submitting transaction:", signError);
         setErrors({ transaction: `Transaction signing error: ${(signError as Error).message}` });
@@ -759,36 +768,46 @@ export default function RespondToOfferModal({
           description: "Please wait while we process your payment..."
         });
 
-        // Encode the signed transaction
-        const encodedTransaction = Buffer.from(signedTransaction.serialize()).toString('base64');
+        // Submit directly to Solana instead of using the backend
+        console.log("Submitting transaction directly to Solana...");
+        try {
+          const connection = new Connection(SOLANA_RPC_ENDPOINT, "confirmed");
+          const signature = await connection.sendRawTransaction(signedTransaction.serialize());
+          console.log("Transaction sent to Solana:", signature);
 
-        // Submit transaction to our backend
-        const transactionSignature = await submitTransactionNoUpdate(encodedTransaction, authToken);
-        console.log("Transaction submitted to Solana:", transactionSignature);
+          // Now call the backend API to record the sale
+          const saleResponse = await recordPropertySale(
+            offer.property_id,
+            offer.buyer_wallet,
+            offer.seller_wallet,
+            offer.amount,
+            signature,
+            authToken
+          );
 
-        // Now call the backend API to record the sale
-        const saleResponse = await recordPropertySale(
-          offer.property_id,
-          offer.buyer_wallet,
-          offer.seller_wallet,
-          offer.amount,
-          transactionSignature,
-          authToken
-        );
+          console.log("Sale recording API result:", saleResponse);
 
-        console.log("Sale recording API result:", saleResponse);
+          if (!saleResponse.success) {
+            throw new Error(saleResponse.message || "Failed to record the sale");
+          }
 
-        if (!saleResponse.success) {
-          throw new Error(saleResponse.message || "Failed to record the sale");
+          toast({
+            title: "Purchase Completed",
+            description: "You have successfully completed the purchase!"
+          });
+
+          onSuccess();
+          onClose();
+        } catch (sendError) {
+          console.error("Error sending transaction to Solana:", sendError);
+          setErrors({ transaction: `Error sending transaction: ${(sendError as Error).message}` });
+          toast({
+            title: "Transaction Error",
+            description: `Failed to send transaction to Solana: ${(sendError as Error).message}`
+          });
+          setIsSubmitting(false);
+          return;
         }
-
-        toast({
-          title: "Purchase Completed",
-          description: "You have successfully completed the purchase!"
-        });
-
-        onSuccess();
-        onClose();
 
       } catch (signError) {
         console.error("Error signing or submitting transaction:", signError);
