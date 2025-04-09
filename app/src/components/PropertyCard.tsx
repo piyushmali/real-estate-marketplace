@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Home, Bed, Bath, ArrowRight, MapPin, Edit, DollarSign, CheckCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useWallet } from "@/hooks/useWallet";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
 import { Property } from "@/context/PropertyContext";
@@ -25,7 +25,31 @@ export const PropertyCard = ({ property, onUpdateProperty, onMakeOffer, onExecut
   const [imageError, setImageError] = useState(false);
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
   const [showUpdateDialog, setShowUpdateDialog] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
   
+  // Detect mobile devices
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    
+    // Initial check
+    checkMobile();
+    
+    // Add event listener for resize
+    window.addEventListener('resize', checkMobile);
+    
+    // Cleanup
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+  
+  // Handle tap/click on card for mobile devices
+  const handleCardInteraction = () => {
+    if (isMobile) {
+      setShowActions(prev => !prev);
+    }
+  };
+
   // Handle both string and PublicKey formats for the owner
   const ownerString = typeof property.owner === 'string' 
     ? property.owner 
@@ -81,18 +105,30 @@ export const PropertyCard = ({ property, onUpdateProperty, onMakeOffer, onExecut
   
   // Handle successful property update
   const handleUpdateSuccess = (updatedProperty: Property) => {
+    console.log("Property updated successfully:", updatedProperty);
+    
     if (onUpdateProperty) {
       onUpdateProperty(updatedProperty);
     }
     setShowUpdateDialog(false);
   };
   
+  // Make sure price is always displayed with 1 decimal place
+  const formattedPrice = property.price.toFixed(1);
+  
+  // Recalculate price whenever property changes
+  useEffect(() => {
+    // Log to verify we're getting updated property data
+    console.log(`PropertyCard: property ${property.property_id} price updated to ${property.price}`);
+  }, [property.price, property.property_id]);
+  
   return (
     <>
       <Card 
-        className="w-full h-[380px] flex flex-col overflow-hidden transition-all duration-300 hover:shadow-xl hover:scale-[1.02] rounded-xl border-2 border-gray-200 shadow-md relative"
-        onMouseEnter={() => setShowActions(true)}
-        onMouseLeave={() => setShowActions(false)}
+        className="w-full h-[380px] flex flex-col overflow-hidden transition-all duration-300 hover:shadow-xl hover:scale-[1.02] rounded-xl border-2 border-gray-200 shadow-md relative touch-manipulation"
+        onMouseEnter={() => !isMobile && setShowActions(true)}
+        onMouseLeave={() => !isMobile && setShowActions(false)}
+        onClick={handleCardInteraction}
       >
         {showActions && (
           <div className="absolute right-2 top-2 z-10 flex flex-col gap-2">
@@ -101,21 +137,27 @@ export const PropertyCard = ({ property, onUpdateProperty, onMakeOffer, onExecut
                 <Button
                   size="sm"
                   variant="secondary"
-                  className="flex items-center gap-1 bg-white/90"
-                  onClick={handleOpenUpdateForm}
+                  className="flex items-center gap-1 bg-white/90 shadow-sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleOpenUpdateForm();
+                  }}
                 >
                   <Edit className="h-4 w-4" />
-                  Update
+                  <span className="sm:inline">{isMobile ? "" : "Update"}</span>
                 </Button>
                 {hasPendingOffers && (
                   <Button
                     size="sm"
                     variant="secondary"
-                    className="flex items-center gap-1 bg-white/90"
-                    onClick={() => onExecuteSale?.(property, offers[0])}
+                    className="flex items-center gap-1 bg-white/90 shadow-sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onExecuteSale?.(property, offers[0]);
+                    }}
                   >
                     <CheckCircle className="h-4 w-4" />
-                    Execute Sale
+                    <span className="sm:inline">{isMobile ? "" : "Execute Sale"}</span>
                   </Button>
                 )}
               </>
@@ -123,15 +165,26 @@ export const PropertyCard = ({ property, onUpdateProperty, onMakeOffer, onExecut
               <Button
                 size="sm"
                 variant="secondary"
-                className="flex items-center gap-1 bg-white/90"
-                onClick={() => onMakeOffer?.(property)}
+                className="flex items-center gap-1 bg-white/90 shadow-sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onMakeOffer?.(property);
+                }}
               >
                 <DollarSign className="h-4 w-4" />
-                Make Offer
+                <span className="sm:inline">{isMobile ? "" : "Make Offer"}</span>
               </Button>
             )}
           </div>
         )}
+        
+        {/* Mobile action hint */}
+        {isMobile && !showActions && (
+          <div className="absolute right-2 top-2 z-10 bg-white/80 rounded-full p-1 shadow-sm">
+            <div className="h-1.5 w-1.5 rounded-full bg-blue-500"></div>
+          </div>
+        )}
+
         <div className="relative w-full h-40 overflow-hidden">
           <div className={cn("absolute inset-0 bg-gradient-to-r", gradient, "opacity-40")}></div>
           {!imageError ? (
@@ -149,7 +202,7 @@ export const PropertyCard = ({ property, onUpdateProperty, onMakeOffer, onExecut
             />
           )}
           <Badge className="absolute top-3 left-3 bg-white/90 text-black font-bold text-sm px-3 py-1 rounded-full shadow-md">
-            ${property.price.toLocaleString()}
+            {formattedPrice} SOL
           </Badge>
         </div>
         
@@ -213,7 +266,7 @@ export const PropertyCard = ({ property, onUpdateProperty, onMakeOffer, onExecut
               )}
               <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4">
                 <Badge className="bg-white/90 text-black font-bold text-md px-3 py-1 rounded-full shadow-md">
-                  ${property.price.toLocaleString()}
+                  {formattedPrice} SOL
                 </Badge>
               </div>
             </div>

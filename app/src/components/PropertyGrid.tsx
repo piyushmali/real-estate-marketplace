@@ -6,10 +6,16 @@ import MakeOfferModal from "./MakeOfferModal";
 import { useAuth } from "../contexts/AuthContext";
 
 export function PropertyGrid() {
-  const { properties, getProperties, isLoading, error, addProperty } = useProperties();
+  const { properties, getProperties, isLoading, error, addProperty, updateProperty } = useProperties();
   const { token } = useAuth();
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
   const [showOfferModal, setShowOfferModal] = useState(false);
+  const [localProperties, setLocalProperties] = useState<Property[]>([]);
+  
+  // Set local properties when properties from context change
+  useEffect(() => {
+    setLocalProperties(properties);
+  }, [properties]);
   
   // Fetch properties when component mounts
   useEffect(() => {
@@ -17,9 +23,30 @@ export function PropertyGrid() {
   }, [getProperties]);
   
   // Handle property update
-  const handleUpdateProperty = (updatedProperty: Property) => {
-    // Update the property in the local state by replacing the old one
-    addProperty(updatedProperty);
+  const handleUpdateProperty = async (updatedProperty: Property) => {
+    console.log("Property updated in grid:", updatedProperty);
+    
+    // Immediately update the property in the local state for instant UI feedback
+    if (updatedProperty && updatedProperty.property_id) {
+      // Update locally first for immediate UI feedback
+      const updatedProperties = localProperties.map(p => 
+        p.property_id === updatedProperty.property_id ? updatedProperty : p
+      );
+      setLocalProperties(updatedProperties);
+      
+      // Also send the update to the backend via context
+      try {
+        // Use the updateProperty function from context to properly update the backend
+        await updateProperty(updatedProperty.property_id, updatedProperty);
+        
+        // Force refresh properties from the database to get the latest data
+        await getProperties(true);
+      } catch (error) {
+        console.error("Error updating property:", error);
+        // If update fails, revert to the original properties
+        setLocalProperties(properties);
+      }
+    }
   };
 
   // Handle make offer button click
@@ -75,8 +102,8 @@ export function PropertyGrid() {
   
   return (
     <>
-      <div className="grid gap-8 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 mx-auto max-w-7xl px-4 py-6">
-        {properties.map((property) => (
+      <div className="grid gap-6 sm:gap-8 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 mx-auto max-w-7xl px-4 py-6">
+        {localProperties.map((property) => (
           <PropertyCard 
             key={property.property_id} 
             property={property} 

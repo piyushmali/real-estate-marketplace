@@ -72,6 +72,7 @@ const mockProperties: Property[] = [
 interface PropertyContextType {
   properties: Property[];
   addProperty: (property: Property) => void;
+  updateProperty: (propertyId: string, updates: Partial<Property>) => Promise<void>;
   getProperties: () => Promise<void>;
   isLoading: boolean;
   error: string | null;
@@ -93,9 +94,9 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
     return timeSinceLastFetch > 5000; 
   };
 
-  const getProperties = useCallback(async () => {
+  const getProperties = useCallback(async (forceRefresh = false) => {
     // Check if we should fetch or if we're already loading
-    if (isLoading || !shouldFetch()) {
+    if (isLoading || (!forceRefresh && !shouldFetch())) {
       console.log('Skipping fetch - already loading or too soon since last fetch');
       return;
     }
@@ -119,8 +120,8 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
       const formattedProperties = data.map(item => ({
         property_id: item.property_id,
         location: item.location,
-        // Convert lamports to SOL (1 SOL = 1,000,000,000 lamports)
-        price: Number(item.price) / 1_000_000_000, 
+        // Price is already in SOL in the database, no need to convert
+        price: Number(item.price),
         square_feet: Number(item.square_feet),
         bedrooms: Number(item.bedrooms),
         bathrooms: Number(item.bathrooms),
@@ -153,6 +154,77 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
     }
   }, [isLoading, lastFetchTime]);
 
+  // New method to update a property
+  const updateProperty = useCallback(async (propertyId: string, updates: Partial<Property>) => {
+    try {
+      console.log(`Updating property ${propertyId} with:`, updates);
+      
+      // Update in local state immediately for responsive UI
+      setProperties(prevProperties => 
+        prevProperties.map(property => 
+          property.property_id === propertyId 
+            ? { ...property, ...updates } 
+            : property
+        )
+      );
+      
+      // Prepare API call data - make sure to use the correct field names expected by the backend
+      const apiData: Record<string, any> = {};
+      
+      // Handle price conversion from SOL to lamports
+      if (updates.price !== undefined) {
+        // Keep the price in SOL, don't convert to lamports
+        apiData['price'] = updates.price;
+        console.log(`Using price in SOL: ${updates.price}`);
+      }
+      
+      // Map metadata_uri correctly - use this field for image URL updates
+      if (updates.metadata_uri !== undefined) {
+        apiData['metadata_uri'] = updates.metadata_uri;
+      }
+      
+      // Other fields that might be updated
+      if (updates.is_active !== undefined) {
+        apiData['is_active'] = updates.is_active;
+      }
+      
+      console.log("Sending update to API:", apiData);
+      
+      // Get token from localStorage
+      const token = localStorage.getItem('jwt_token');
+      if (!token) {
+        throw new Error("Authentication required");
+      }
+      
+      // Make the API call to update the property
+      const response = await fetch(`${API_URL}/api/properties/${propertyId}/update`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(apiData)
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Failed to update property");
+      }
+      
+      // Parse the response to get the updated property
+      const responseData = await response.json();
+      console.log("API update response:", responseData);
+      
+      // Force a refresh of all properties from the database
+      await getProperties(true);
+      
+      return;
+    } catch (error) {
+      console.error('Failed to update property:', error);
+      throw new Error('Failed to update property');
+    }
+  }, [getProperties]);
+
   const addProperty = useCallback((property: Property) => {
     try {
       // Process the new property
@@ -182,6 +254,7 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
       value={{
         properties,
         addProperty,
+        updateProperty,
         getProperties,
         isLoading,
         error

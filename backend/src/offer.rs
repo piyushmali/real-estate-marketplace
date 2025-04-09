@@ -1,3 +1,5 @@
+#![allow(unused_imports)]
+
 use actix_web::{web, HttpRequest, HttpResponse, Responder};
 use diesel::prelude::*;
 use chrono::{Utc, Duration};
@@ -284,7 +286,8 @@ pub async fn respond_to_offer(
     };
 
     // Find the property to verify ownership
-    use crate::schema::properties::dsl::{properties, property_id as prop_id, owner_wallet};
+    use crate::schema::properties::dsl::{properties, property_id as prop_id};
+    use crate::schema::properties::dsl::owner_wallet;
     
     let property_result = properties
         .filter(prop_id.eq(&offer.property_id))
@@ -369,7 +372,8 @@ pub async fn get_property_offers(
     };
 
     // Verify property ownership (only owners can see offers for their property)
-    use crate::schema::properties::dsl::{properties, property_id as prop_id, owner_wallet};
+    use crate::schema::properties::dsl::{properties, property_id as prop_id};
+    use crate::schema::properties::dsl::owner_wallet;
     
     let is_owner = match properties
         .filter(prop_id.eq(&property_id_str))

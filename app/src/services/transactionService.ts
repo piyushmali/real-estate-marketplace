@@ -206,7 +206,20 @@ export const getTransactionHistory = async (token: string): Promise<any[]> => {
         },
       }
     );
-    return response.data.transactions;
+    
+    console.log("Raw transaction data:", response.data.transactions);
+    
+    // Process transactions to add status information
+    const transactions = response.data.transactions.map((tx: any) => {
+      // For now all transactions from database are considered confirmed
+      return {
+        ...tx,
+        status: 'confirmed'
+      };
+    });
+    
+    console.log("Processed transaction data:", transactions);
+    return transactions;
   } catch (error) {
     console.error('Error getting transaction history:', error);
     throw error;
@@ -252,6 +265,13 @@ export const updatePropertyOwnership = async (
   token: string
 ): Promise<any> => {
   try {
+    console.log("Updating property ownership with data:", {
+      property_id: propertyId,
+      new_owner: newOwner,
+      offer_id: offerId,
+      transaction_signature: transactionSignature
+    });
+    
     const response = await axios.post(
       `${API_URL}/api/properties/update-ownership`,
       {
@@ -268,6 +288,19 @@ export const updatePropertyOwnership = async (
         },
       }
     );
+    
+    console.log("Property ownership updated successfully:", response.data);
+    
+    // After updating property ownership, refresh transaction data
+    try {
+      console.log("Refreshing transaction history after ownership update");
+      await getTransactionHistory(token);
+      console.log("Transaction history refreshed successfully");
+    } catch (refreshError) {
+      console.warn("Failed to refresh transaction history:", refreshError);
+      // Non-blocking error
+    }
+    
     return response.data;
   } catch (error) {
     console.error('Error updating property ownership:', error);

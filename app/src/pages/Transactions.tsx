@@ -50,6 +50,9 @@ export default function Transactions() {
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
   
+  // Add auto-refresh interval for transaction data
+  const AUTO_REFRESH_INTERVAL = 15000; // 15 seconds
+  
   // Get auth token from localStorage
   const getAuthToken = (): string | null => {
     const token = localStorage.getItem('jwt_token');
@@ -99,6 +102,18 @@ export default function Transactions() {
   useEffect(() => {
     console.log("Transactions page mounted");
     fetchTransactions();
+    
+    // Set up auto-refresh timer
+    const refreshTimer = setInterval(() => {
+      console.log("Auto-refreshing transaction data");
+      fetchTransactions();
+    }, AUTO_REFRESH_INTERVAL);
+    
+    // Cleanup function to clear interval when component unmounts
+    return () => {
+      console.log("Transactions page unmounting, clearing refresh timer");
+      clearInterval(refreshTimer);
+    };
   }, [fetchTransactions]);
   
   // Function to view transaction details in the Solana Explorer
@@ -130,7 +145,14 @@ export default function Transactions() {
                 onClick={fetchTransactions}
                 disabled={isLoading}
               >
-                Refresh
+                {isLoading ? (
+                  <>
+                    <span className="animate-spin mr-2">⟳</span>
+                    Refreshing...
+                  </>
+                ) : (
+                  'Refresh'
+                )}
               </Button>
             </div>
           </div>
@@ -196,7 +218,7 @@ export default function Transactions() {
                           </TableCell>
                           <TableCell>{txDate}</TableCell>
                           <TableCell>
-                            {tx.transaction_signature ? (
+                            {tx.status === 'confirmed' ? (
                               <Badge variant="success" className="flex items-center">
                                 <Check className="h-3 w-3 mr-1" />
                                 Confirmed

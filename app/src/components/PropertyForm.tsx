@@ -154,7 +154,27 @@ export function PropertyForm({ onClose }: PropertyFormProps) {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    
+    // Handle price specifically to limit to 1 decimal place
+    if (name === 'price') {
+      // Allow empty input for better UX
+      if (value === '') {
+        setFormData(prev => ({ ...prev, [name]: value }));
+        return;
+      }
+      
+      const numericValue = parseFloat(value);
+      if (!isNaN(numericValue)) {
+        // Format to exactly 1 decimal place
+        setFormData(prev => ({ ...prev, [name]: numericValue.toFixed(1) }));
+      } else {
+        // If not a valid number, keep the input as is
+        setFormData(prev => ({ ...prev, [name]: value }));
+      }
+    } else {
+      setFormData(prev => ({ ...prev, [name]: value }));
+    }
+    
     // Clear error for this field when user types
     if (errors[name]) {
       setErrors(prev => {
@@ -184,6 +204,8 @@ export function PropertyForm({ onClose }: PropertyFormProps) {
       newErrors.price = "Price is required";
     } else if (isNaN(Number(formData.price)) || Number(formData.price) <= 0) {
       newErrors.price = "Price must be a positive number";
+    } else if ((formData.price.toString().split('.')[1] || '').length > 1) {
+      newErrors.price = "Price can only have up to 1 decimal place";
     } else if (Number(formData.price) > 1000000) {
       newErrors.price = "Price must be reasonable (less than 1,000,000 SOL)";
     }
@@ -454,7 +476,7 @@ export function PropertyForm({ onClose }: PropertyFormProps) {
       const propertyMetadata = {
         property_id: formData.property_id,
         location: formData.location,
-        price: Number(formData.price),
+        price: parseFloat(parseFloat(formData.price).toFixed(1)),
         square_feet: Number(formData.square_feet),
         bedrooms: Number(formData.bedrooms),
         bathrooms: Number(formData.bathrooms),
@@ -545,7 +567,7 @@ export function PropertyForm({ onClose }: PropertyFormProps) {
       );
       
       // Convert price to lamports (as BN) - ensure it's a valid number first
-      const priceInSol = Number(formData.price);
+      const priceInSol = parseFloat(parseFloat(formData.price).toFixed(1));
       if (isNaN(priceInSol)) {
         throw new Error("Invalid price value");
       }
@@ -684,7 +706,7 @@ export function PropertyForm({ onClose }: PropertyFormProps) {
         // Create a plain serializable property object
         const newProperty = {
           location: formData.location,
-          price: Number(formData.price),
+          price: parseFloat(parseFloat(formData.price).toFixed(1)),
           square_feet: Number(formData.square_feet),
           bedrooms: Number(formData.bedrooms),
           bathrooms: Number(formData.bathrooms),
@@ -722,7 +744,7 @@ export function PropertyForm({ onClose }: PropertyFormProps) {
             // Create a plain serializable property object
             const newProperty = {
               location: formData.location,
-              price: Number(formData.price),
+              price: parseFloat(parseFloat(formData.price).toFixed(1)),
               square_feet: Number(formData.square_feet),
               bedrooms: Number(formData.bedrooms),
               bathrooms: Number(formData.bathrooms),

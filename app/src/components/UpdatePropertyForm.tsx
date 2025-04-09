@@ -21,6 +21,7 @@ interface Property {
   nft_mint_address?: string;
   nft_mint?: string;
   nft_token_account?: string;
+  metadata_uri?: string;
 }
 
 // Constants for blockchain interaction
@@ -45,15 +46,13 @@ export function UpdatePropertyForm({ property, onClose, onSuccess }: UpdatePrope
   const [imageUrl, setImageUrl] = useState('');
   const [isActive, setIsActive] = useState(true);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [programLogs, setProgramLogs] = useState<string[]>([]);
-  const [showLogs, setShowLogs] = useState(false);
-
+  
   // Initialize form with current property data
   useEffect(() => {
     // Format price with proper decimal places (avoid showing 0.0000...)
     const priceValue = parseFloat(property.price.toString());
     setPrice(priceValue > 0 ? priceValue.toString() : '');
-    setImageUrl(property.description || '');
+    setImageUrl(property.metadata_uri || '');
     // Handle undefined is_active with default value (true)
     setIsActive(property.is_active === undefined ? true : property.is_active);
   }, [property]);
@@ -226,15 +225,42 @@ export function UpdatePropertyForm({ property, onClose, onSuccess }: UpdatePrope
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     
-    // Validate form before submission
     if (!validateForm()) {
       return;
     }
     
     setIsSubmitting(true);
-    setErrors({});
     
     try {
+      // Collect the updates
+      const updates: Record<string, any> = {};
+      
+      // Only include fields that have changed
+      if (price && parseFloat(price) !== property.price) {
+        const parsedPrice = parseFloat(price);
+        console.log(`Updating price from ${property.price} to ${parsedPrice}`);
+        updates.price = parsedPrice;
+      }
+      
+      if (imageUrl && imageUrl !== property.metadata_uri) {
+        updates.metadata_uri = imageUrl;
+      }
+      
+      if (isActive !== property.is_active) {
+        updates.is_active = isActive;
+      }
+      
+      // If nothing has changed, inform user and exit
+      if (Object.keys(updates).length === 0) {
+        toast({
+          title: "No changes detected",
+          description: "Please modify at least one field before submitting.",
+          variant: "default",
+        });
+        setIsSubmitting(false);
+        return;
+      }
+      
       console.log("Starting property update process...");
       
       // Debug property information with correct field names
@@ -766,8 +792,8 @@ export function UpdatePropertyForm({ property, onClose, onSuccess }: UpdatePrope
         updateData['price'] = parseFloat(price); 
       }
       
-      if (imageUrl !== property.description) {
-        updateData['description'] = imageUrl;
+      if (imageUrl !== property.metadata_uri) {
+        updateData['metadata_uri'] = imageUrl;
       }
       
       if (isActive !== property.is_active) {
@@ -806,7 +832,7 @@ export function UpdatePropertyForm({ property, onClose, onSuccess }: UpdatePrope
         const updatedProperty = {
           ...property,
           price: price && price !== '' ? parseFloat(price) : property.price,
-          description: imageUrl,
+          metadata_uri: imageUrl,
           is_active: isActive
         };
         onSuccess(updatedProperty);
@@ -957,8 +983,8 @@ export function UpdatePropertyForm({ property, onClose, onSuccess }: UpdatePrope
         updateData['price'] = parseFloat(price); 
       }
       
-      if (imageUrl !== property.description) {
-        updateData['description'] = imageUrl;
+      if (imageUrl !== property.metadata_uri) {
+        updateData['metadata_uri'] = imageUrl;
       }
       
       if (isActive !== property.is_active) {
@@ -996,7 +1022,7 @@ export function UpdatePropertyForm({ property, onClose, onSuccess }: UpdatePrope
           const updatedProperty = {
             ...property,
             price: price && price !== '' ? parseFloat(price) : property.price,
-            description: imageUrl,
+            metadata_uri: imageUrl,
             is_active: isActive
           };
           onSuccess(updatedProperty);
@@ -1382,17 +1408,13 @@ export function UpdatePropertyForm({ property, onClose, onSuccess }: UpdatePrope
 
   // Add this function to display logs in the UI
   const displayProgramLogs = (logs: string[]) => {
-    setProgramLogs(logs);
-    setShowLogs(true);
+    // Function emptied - logs won't be displayed
   };
 
-  // Clear program logs
   const clearProgramLogs = () => {
-    setProgramLogs([]);
-    setShowLogs(false);
+    // Function emptied
   };
 
-  // Helper function to log account details from a simulation
   const logAccountDetails = async (connection: Connection, accounts: PublicKey[]) => {
     console.log("\n=== ACCOUNT DETAILS ===");
     
@@ -1515,43 +1537,9 @@ export function UpdatePropertyForm({ property, onClose, onSuccess }: UpdatePrope
           </div>
         </div>
         
-        {/* Program logs display */}
-        {showLogs && programLogs.length > 0 && (
-          <div className="mb-6 mt-4">
-            <div className="flex justify-between items-center mb-2">
-              <Label className="block text-gray-700 text-sm font-medium">
-                Solana Program Logs
-              </Label>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={clearProgramLogs}
-                className="text-xs"
-              >
-                Clear Logs
-              </Button>
-            </div>
-            <div className="bg-black text-green-400 p-4 rounded-md font-mono text-xs overflow-auto max-h-60">
-              {programLogs.map((log, index) => (
-                <div key={index} className={`mb-1 ${log.includes("ERROR:") ? 'text-red-400' : log.includes("DEBUG:") ? 'text-yellow-400' : ''}`}>
-                  {log}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-        
         <div className="flex items-center justify-end gap-4 mt-8">
           <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
             Cancel
-          </Button>
-          <Button 
-            variant="outline" 
-            type="button"
-            onClick={verifyPropertyPDA}
-            disabled={isSubmitting}
-          >
-            Debug PDAs
           </Button>
           <Button type="submit" disabled={isSubmitting}>
             {isSubmitting ? (

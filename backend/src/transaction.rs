@@ -33,7 +33,6 @@ pub struct SubmitTransactionRequest {
 #[derive(Debug, Deserialize)]
 pub struct SubmitInstructionsRequest {
     pub instructions: Vec<SerializedInstruction>,
-    pub signers: Vec<String>,
     pub metadata: String,
 }
 
@@ -82,14 +81,6 @@ pub enum TransactionError {
     SerializationError(#[from] bincode::Error),
     #[error("Database error: {0}")]
     DatabaseError(#[from] diesel::result::Error),
-    #[error("Invalid wallet address: {0}")]
-    InvalidWallet(String),
-    #[error("Failed to decode transaction: {0}")]
-    DecodeError(String),
-    #[error("Transaction execution failed: {0}")]
-    ExecutionError(String),
-    #[error("Invalid public key: {0}")]
-    InvalidPublicKey(String),
 }
 
 pub async fn verify_token(req: &HttpRequest) -> Result<String, HttpResponse> {
@@ -439,7 +430,6 @@ pub struct RecordPropertySaleRequest {
     pub seller_wallet: String,
     pub buyer_wallet: String,
     pub price: i64,
-    pub transaction_signature: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -617,8 +607,6 @@ pub struct CompleteNFTTransferRequest {
     pub nft_mint: String,
     pub seller_wallet: String,
     pub buyer_wallet: String,
-    pub offer_id: String,
-    pub amount: f64,
 }
 
 #[derive(Debug, Serialize)]
@@ -690,7 +678,6 @@ pub struct UpdatePropertyOwnershipRequest {
     pub property_id: String, 
     pub new_owner: String,
     pub offer_id: String,
-    pub transaction_signature: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -735,6 +722,42 @@ pub async fn update_property_ownership(
         }
     };
 
+    // Get the seller info and price from the offer
+    use crate::schema::offers::dsl::{offers, id as offer_id, amount};
+    let offer_result = offers
+        .filter(offer_id.eq(offer_uuid))
+        .select((amount))
+        .first::<i64>(&mut conn);
+    
+    let price = match offer_result {
+        Ok(offer_amount) => offer_amount,
+        Err(e) => {
+            error!("Error fetching offer amount: {}", e);
+            return HttpResponse::InternalServerError().json(UpdatePropertyOwnershipResponse {
+                success: false,
+                message: format!("Error fetching offer details: {}", e),
+            });
+        }
+    };
+
+    // Get the current property owner (seller) from the properties table
+    use crate::schema::properties::dsl::{properties, property_id as prop_id, owner_wallet};
+    let seller_result = properties
+        .filter(prop_id.eq(&data.property_id))
+        .select(owner_wallet)
+        .first::<String>(&mut conn);
+    
+    let seller = match seller_result {
+        Ok(current_owner) => current_owner,
+        Err(e) => {
+            error!("Error fetching property owner: {}", e);
+            return HttpResponse::InternalServerError().json(UpdatePropertyOwnershipResponse {
+                success: false,
+                message: format!("Error fetching property owner: {}", e),
+            });
+        }
+    };
+
     let now = Utc::now().naive_utc();
     
     // Update property ownership in the properties table
@@ -752,6 +775,29 @@ pub async fn update_property_ownership(
     match property_update_result {
         Ok(_) => {
             info!("Property ownership transferred to {}", data.new_owner);
+            
+            // Record the transaction in the transactions table
+            let transaction_id = Uuid::new_v4();
+            let new_transaction = DbTransaction {
+                id: transaction_id,
+                property_id: data.property_id.clone(),
+                seller_wallet: seller,
+                buyer_wallet: data.new_owner.clone(),
+                price: price,
+                timestamp: now,
+            };
+            
+            // Insert transaction into database
+            let transaction_result = diesel::insert_into(crate::schema::transactions::table)
+                .values(&new_transaction)
+                .execute(&mut conn);
+                
+            if let Err(e) = transaction_result {
+                error!("Failed to record property sale transaction: {}", e);
+                // Continue anyway since the property ownership was updated
+            } else {
+                info!("Property sale transaction recorded successfully");
+            }
             
             // Update the status of the associated offer to 'completed'
             let offer_update_result = {
@@ -926,7 +972,7 @@ pub async fn create_escrow_token_account(
         // Create transaction
         let recent_blockhash = rpc_client.get_latest_blockhash()?;
         let message = Message::new(&[create_ata_ix], Some(&admin_keypair.pubkey()));
-        let mut tx = SolanaTransaction::new(&[&admin_keypair], message, recent_blockhash);
+        let tx = SolanaTransaction::new(&[&admin_keypair], message, recent_blockhash);
         
         // Send and confirm transaction
         let signature = rpc_client.send_and_confirm_transaction(&tx)?;
