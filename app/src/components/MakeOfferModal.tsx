@@ -393,8 +393,11 @@ export default function MakeOfferModal({
           variant: "default"
         });
         
-        onSuccess();
-        onClose();
+        // Close the modal after successful transaction with a small delay
+        setTimeout(() => {
+          onSuccess();
+          onClose();
+        }, 1000);
       } catch (error) {
         console.error("Error processing transaction:", error);
         

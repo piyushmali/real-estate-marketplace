@@ -45,7 +45,7 @@ export function Navbar() {
   ];
   
   return (
-    <nav className="bg-white border-b border-blue-600 shadow-sm px-4 py-2.5 sticky top-0 z-50">
+    <nav className="bg-white border-b border-slate-600 shadow-sm px-4 py-2.5 sticky top-0 z-50">
       <div className="flex flex-wrap justify-between items-center mx-auto max-w-screen-xl">
         <Link href="/" className="flex items-center">
           <img 
@@ -53,7 +53,7 @@ export function Navbar() {
             alt="Solulab Logo" 
             className="h-10 mr-2" 
           />
-          <span className="text-blue-800 font-semibold text-xl">Solulab Real Estate</span>
+          <span className="text-black font-semibold text-xl">Solulab Real Estate</span>
         </Link>
         
         <div className="flex items-center">
@@ -63,7 +63,7 @@ export function Navbar() {
               <Link 
                 key={link.path} 
                 href={link.path} 
-                className="text-blue-700 hover:text-blue-900 text-xl font-semibold"
+                className="text-black hover:text-slate-800 text-xl font-semibold"
               >
                 {link.name}
               </Link>

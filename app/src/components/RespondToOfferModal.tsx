@@ -760,8 +760,11 @@ export default function RespondToOfferModal({
             description: "You have successfully completed the purchase!"
           });
 
-          onSuccess();
-          onClose();
+          // Close the modal after successful transaction with a small delay
+          setTimeout(() => {
+            onSuccess();
+            onClose();
+          }, 1000);
         } catch (sendError) {
           console.error("Error sending transaction to Solana:", sendError);
           setErrors({ transaction: `Error sending transaction: ${(sendError as Error).message}` });

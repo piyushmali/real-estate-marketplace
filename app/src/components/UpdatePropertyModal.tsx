@@ -109,7 +109,10 @@ export function UpdatePropertyModal({ property, isOpen, onClose }: UpdatePropert
         description: "Your property has been updated successfully.",
       });
       
-      onClose();
+      // Add a small timeout to ensure the toast is displayed before closing
+      setTimeout(() => {
+        onClose();
+      }, 500);
     } catch (error) {
       console.error("Error updating property:", error);
       toast({

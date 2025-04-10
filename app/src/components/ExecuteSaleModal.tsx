@@ -727,21 +727,12 @@ export default function ExecuteSaleModal({
           duration: 5000,
         });
         
-        // Give a moment for the UI to update before closing the modal
+        // Close the modal automatically after transaction completes
         setTimeout(() => {
-          // Close the modal and notify parent component
-          console.log("Calling onSuccess to update parent component");
-          onSuccess(); // This should trigger a refresh of offers in the parent
+          // Call onSuccess to update parent component
+          onSuccess();
           onClose();
-          
-          // Log the final success message instead of forcing page reload
-          console.log("✅ Transaction completed successfully, UI should update via onSuccess callback");
-          console.log("🔍 If UI is not updating, check offer status in the database");
-          
-          // Comment out the page reload to allow viewing logs
-          // console.log("Forcing page reload to ensure data consistency");
-          // window.location.reload();
-        }, 1500);
+        }, 1000);
         
       } catch (sendError) {
         console.error("Error sending or confirming transaction:", sendError);
