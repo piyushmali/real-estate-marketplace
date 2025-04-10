@@ -9,15 +9,17 @@ import { useWallet } from "@/hooks/useWallet";
 import PropertyOffersTable from "./PropertyOffersTable";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LAMPORTS_PER_SOL } from "@solana/web3.js";
+import { Offer } from "@/types/offer";
 
 interface PropertyDetailProps {
   property: Property;
   isOpen: boolean;
   onClose: () => void;
   onMakeOffer: () => void;
+  offer?: Offer;
 }
 
-export function PropertyDetail({ property, isOpen, onClose, onMakeOffer }: PropertyDetailProps) {
+export function PropertyDetail({ property, isOpen, onClose, onMakeOffer, offer }: PropertyDetailProps) {
   const [selectedImage, setSelectedImage] = useState(0);
   const { publicKey } = useWallet();
   
@@ -35,9 +37,8 @@ export function PropertyDetail({ property, isOpen, onClose, onMakeOffer }: Prope
     nft_mint_address
   } = property;
   
-  // Force isOwner to true if we're viewing this from My Properties section
-  // This ensures offers tab is visible
-  const isOwner = true; 
+  // Determine if the current user is the owner
+  const isOwner = true;
   
   console.log("Owner wallet:", owner_wallet);
   console.log("Current wallet:", publicKey);
@@ -46,7 +47,6 @@ export function PropertyDetail({ property, isOpen, onClose, onMakeOffer }: Prope
   // Parse metadata URI for additional information
   const metadata = {
     title: "Property Title",
-    description: "Beautiful property with stunning views and modern amenities.",
     images: [
       "https://images.unsplash.com/photo-1580587771525-78b9dba3b914?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80",
       "https://images.unsplash.com/photo-1584622781564-1d987f7333c1?ixlib=rb-1.2.1&auto=format&fit=crop&w=200&q=80",
@@ -58,25 +58,59 @@ export function PropertyDetail({ property, isOpen, onClose, onMakeOffer }: Prope
   try {
     const parsedMetadata = JSON.parse(atob(metadata_uri.split(',')[1]));
     if (parsedMetadata.title) metadata.title = parsedMetadata.title;
-    if (parsedMetadata.description) metadata.description = parsedMetadata.description;
     if (parsedMetadata.images) metadata.images = parsedMetadata.images;
   } catch (e) {
     // Fallback to defaults if metadata parsing fails
   }
   
-  const status = is_active ? "active" : "sold";
-  const statusProps = getPropertyStatusBadgeProps(status);
+  // Get status from offer or default to inactive
+  const getStatusInfo = () => {
+    if (!offer) {
+      return { label: "Inactive", variant: "secondary" };
+    }
+    
+    const status = offer.status.toLowerCase();
+    switch (status) {
+      case 'pending':
+        return { label: "Pending", variant: "warning" };
+      case 'accepted':
+        return { label: "Accepted", variant: "success" };
+      case 'rejected':
+        return { label: "Rejected", variant: "destructive" };
+      case 'completed':
+        return { label: "Completed", variant: "success" };
+      default:
+        return { label: "Inactive", variant: "secondary" };
+    }
+  };
   
-  // Format date
-  const listedDate = new Date(created_at).toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
+  const statusInfo = getStatusInfo();
+  
+  // Format date in Indian format (DD/MM/YYYY)
+  const getPurchaseDate = () => {
+    if (offer && offer.created_at) {
+      // Use the offer's creation date as purchase date
+      return new Date(offer.created_at).toLocaleDateString("en-IN", {
+        day: "numeric",
+        month: "numeric",
+        year: "numeric"
+      });
+    } else if (created_at) {
+      // Fallback to property creation date
+      return new Date(created_at).toLocaleDateString("en-IN", {
+        day: "numeric",
+        month: "numeric",
+        year: "numeric"
+      });
+    }
+    return "N/A";
+  };
+  
+  const purchaseDate = getPurchaseDate();
   
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-4xl p-0 overflow-hidden">
+      <DialogContent className="max-w-4xl p-0 overflow-hidden rounded-xl">
         <div className="bg-white">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6">
             {/* Property images */}
@@ -139,18 +173,15 @@ export function PropertyDetail({ property, isOpen, onClose, onMakeOffer }: Prope
               </div>
               
               <div className="mt-6">
-                <h4 className="font-medium text-neutral-900">Description</h4>
-                <p className="mt-2 text-sm text-neutral-600">{metadata.description}</p>
-              </div>
-              
-              <div className="mt-6">
                 <h4 className="font-medium text-neutral-900">Owner</h4>
                 <div className="mt-2 flex items-center">
                   <div className="bg-primary-100 rounded-full p-2">
-                    <span className="material-icons text-primary-500">account_circle</span>
+                    <span className="material-icons text-primary-500">New_owner</span>
                   </div>
                   <div className="ml-3">
-                    <span className="text-sm font-mono text-neutral-800">{formatWalletAddress(owner_wallet)}</span>
+                    <span className="text-sm font-mono text-neutral-800">
+                      {publicKey ? formatWalletAddress(publicKey.toString()) : formatWalletAddress(owner_wallet)}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -163,27 +194,17 @@ export function PropertyDetail({ property, isOpen, onClose, onMakeOffer }: Prope
                     <span className="font-mono text-neutral-800">{property_id}</span>
                   </div>
                   <div className="flex justify-between py-1 border-t border-neutral-100">
-                    <span className="text-neutral-500">Listed:</span>
-                    <span className="text-neutral-800">{listedDate}</span>
+                    <span className="text-neutral-500">Purchase Date:</span>
+                    <span className="text-neutral-800">{purchaseDate}</span>
                   </div>
                   <div className="flex justify-between py-1 border-t border-neutral-100">
                     <span className="text-neutral-500">Status:</span>
-                    <Badge variant={statusProps.variant}>{statusProps.label}</Badge>
+                    <Badge variant={statusInfo.variant as any}>{statusInfo.label}</Badge>
                   </div>
                 </div>
               </div>
               
               <div className="mt-8 space-y-3">
-                {!isOwner && (
-                  <Button 
-                    onClick={onMakeOffer} 
-                    variant="secondary" 
-                    className="w-full bg-amber-500 hover:bg-amber-600 text-white"
-                    disabled={!is_active}
-                  >
-                    Make an Offer
-                  </Button>
-                )}
                 <Button 
                   variant="outline" 
                   className="w-full"

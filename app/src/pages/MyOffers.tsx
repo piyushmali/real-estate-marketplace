@@ -189,10 +189,11 @@ export default function MyOffers() {
   };
   
   // Handle view property button click
-  const handleViewProperty = (propertyId: string) => {
+  const handleViewProperty = (propertyId: string, offer: Offer) => {
     const foundProperty = properties.find(p => p.property_id === propertyId);
     if (foundProperty) {
       setSelectedProperty(foundProperty);
+      setSelectedOffer(offer);
       setIsPropertyDetailOpen(true);
     } else {
       toast({
@@ -306,7 +307,7 @@ export default function MyOffers() {
                             <Button 
                               variant="ghost" 
                               size="sm"
-                              onClick={() => handleViewProperty(offer.property_id)}
+                              onClick={() => handleViewProperty(offer.property_id, offer)}
                             >
                               <ExternalLink className="h-4 w-4 mr-1" />
                               View Property
@@ -352,6 +353,7 @@ export default function MyOffers() {
           isOpen={isPropertyDetailOpen}
           onClose={() => setIsPropertyDetailOpen(false)}
           onMakeOffer={handleMakeOffer}
+          offer={selectedOffer}
         />
       )}
     </>
