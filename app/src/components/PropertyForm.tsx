@@ -163,12 +163,8 @@ export function PropertyForm({ onClose }: PropertyFormProps) {
         return;
       }
       
-      const numericValue = parseFloat(value);
-      if (!isNaN(numericValue)) {
-        // Format to exactly 1 decimal place
-        setFormData(prev => ({ ...prev, [name]: numericValue.toFixed(1) }));
-      } else {
-        // If not a valid number, keep the input as is
+      // Allow numeric inputs including decimals
+      if (/^(\d+\.?\d*|\.\d+)$/.test(value) || value === '') {
         setFormData(prev => ({ ...prev, [name]: value }));
       }
     } else {
@@ -204,8 +200,6 @@ export function PropertyForm({ onClose }: PropertyFormProps) {
       newErrors.price = "Price is required";
     } else if (isNaN(Number(formData.price)) || Number(formData.price) <= 0) {
       newErrors.price = "Price must be a positive number";
-    } else if ((formData.price.toString().split('.')[1] || '').length > 1) {
-      newErrors.price = "Price can only have up to 1 decimal place";
     } else if (Number(formData.price) > 1000000) {
       newErrors.price = "Price must be reasonable (less than 1,000,000 SOL)";
     }
@@ -567,11 +561,14 @@ export function PropertyForm({ onClose }: PropertyFormProps) {
       );
       
       // Convert price to lamports (as BN) - ensure it's a valid number first
-      const priceInSol = parseFloat(parseFloat(formData.price).toFixed(1));
+      const priceInSol = parseFloat(formData.price);
       if (isNaN(priceInSol)) {
         throw new Error("Invalid price value");
       }
-      const price = new BN(priceInSol * LAMPORTS_PER_SOL);
+      // Multiply by LAMPORTS_PER_SOL and use Math.floor to ensure we have a whole number of lamports
+      const priceInLamports = Math.floor(priceInSol * LAMPORTS_PER_SOL);
+      const price = new BN(priceInLamports);
+      console.log(`Converting price from ${priceInSol} SOL to ${priceInLamports} lamports`);
       
       // Convert square feet to BN - ensure it's a valid number first
       const sqFeet = Number(formData.square_feet);
@@ -706,7 +703,7 @@ export function PropertyForm({ onClose }: PropertyFormProps) {
         // Create a plain serializable property object
         const newProperty = {
           location: formData.location,
-          price: parseFloat(parseFloat(formData.price).toFixed(1)),
+          price: priceInLamports, // Store the lamport value in the database
           square_feet: Number(formData.square_feet),
           bedrooms: Number(formData.bedrooms),
           bathrooms: Number(formData.bathrooms),
@@ -744,7 +741,7 @@ export function PropertyForm({ onClose }: PropertyFormProps) {
             // Create a plain serializable property object
             const newProperty = {
               location: formData.location,
-              price: parseFloat(parseFloat(formData.price).toFixed(1)),
+              price: priceInLamports, // Store the lamport value in the database
               square_feet: Number(formData.square_feet),
               bedrooms: Number(formData.bedrooms),
               bathrooms: Number(formData.bathrooms),
@@ -876,10 +873,11 @@ export function PropertyForm({ onClose }: PropertyFormProps) {
             onChange={handleChange}
             className={`w-full px-3 py-2 border rounded-lg ${errors.price ? 'border-red-500' : 'border-gray-300'}`}
             placeholder="e.g., 10"
-            min="0.001"
-            step="0.001"
+            min="0.000000001"
+            step="0.000000001"
           />
           {errors.price && <p className="text-red-500 text-xs mt-1">{errors.price}</p>}
+          <p className="text-xs text-gray-500 mt-1">Enter price in SOL. Will be converted to lamports (1 SOL = 10^9 lamports).</p>
         </div>
         
         <div className="grid grid-cols-3 gap-4 mb-4">

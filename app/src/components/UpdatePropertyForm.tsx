@@ -49,9 +49,16 @@ export function UpdatePropertyForm({ property, onClose, onSuccess }: UpdatePrope
   
   // Initialize form with current property data
   useEffect(() => {
-    // Format price with proper decimal places (avoid showing 0.0000...)
-    const priceValue = parseFloat(property.price.toString());
-    setPrice(priceValue > 0 ? priceValue.toString() : '');
+    // Format price from lamports to SOL if it's stored in lamports
+    const priceValue = property.price;
+    // Check if price is likely in lamports already (large number)
+    if (priceValue > 10000) {
+      // Convert from lamports to SOL for display
+      setPrice((priceValue / LAMPORTS_PER_SOL).toString());
+    } else {
+      // If already in SOL, just use as is
+      setPrice(priceValue > 0 ? priceValue.toString() : '');
+    }
     setImageUrl(property.metadata_uri || '');
     // Handle undefined is_active with default value (true)
     setIsActive(property.is_active === undefined ? true : property.is_active);
@@ -394,7 +401,9 @@ export function UpdatePropertyForm({ property, onClose, onSuccess }: UpdatePrope
         const priceValue = parseFloat(price);
         if (!isNaN(priceValue) && priceValue > 0) {
           console.log(`Converting price ${priceValue} SOL to lamports`);
-          priceBN = new BN(Math.floor(priceValue * LAMPORTS_PER_SOL));
+          // Use Math.floor to ensure we get a whole number of lamports
+          const priceInLamports = Math.floor(priceValue * LAMPORTS_PER_SOL);
+          priceBN = new BN(priceInLamports);
           console.log(`Price in lamports: ${priceBN.toString()}`);
         }
       }
@@ -1483,10 +1492,11 @@ export function UpdatePropertyForm({ property, onClose, onSuccess }: UpdatePrope
             onChange={handlePriceChange}
             className={`w-full border rounded-lg ${errors.price ? 'border-red-500' : 'border-gray-300'}`}
             placeholder="e.g., 10"
-            min="0.001"
-            step="0.001"
+            min="0.000000001"
+            step="0.000000001"
           />
           {errors.price && <p className="text-red-500 text-xs mt-1">{errors.price}</p>}
+          <p className="text-xs text-gray-500 mt-1">Enter price in SOL. Will be converted to lamports (1 SOL = 10^9 lamports).</p>
         </div>
         
         <div className="mb-4">

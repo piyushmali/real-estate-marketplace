@@ -7,7 +7,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { getTransactionHistory } from "@/services/transactionService";
 import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { createContext, useContext } from "react";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/ui/Badge";
 
 // Define Transaction type
 interface Transaction {
@@ -90,8 +90,7 @@ export default function Transactions() {
       setError("Failed to fetch transactions. Please try again.");
       toast({
         title: "Error",
-        description: "Failed to fetch transaction history",
-        variant: "destructive" as any
+        description: "Failed to fetch transaction history"
       });
     } finally {
       setIsLoading(false);

@@ -494,7 +494,7 @@ pub async fn record_property_sale(
                 match diesel::update(properties.filter(prop_id.eq(&data.property_id)))
                     .set((
                         owner_wallet.eq(&data.buyer_wallet),
-                        is_active.eq(false),
+                        is_active.eq(true), // Set is_active to true for active properties
                         prop_updated_at.eq(now),
                     ))
                     .execute(&mut conn)
@@ -678,6 +678,7 @@ pub struct UpdatePropertyOwnershipRequest {
     pub property_id: String, 
     pub new_owner: String,
     pub offer_id: String,
+    pub transaction_signature: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -697,8 +698,14 @@ pub async fn update_property_ownership(
         Err(resp) => return resp,
     };
 
+    // Log detailed information for debugging
+    info!("Updating property ownership: property_id={}, new_owner={}, offer_id={}, transaction_signature={}", 
+        data.property_id, data.new_owner, data.offer_id, data.transaction_signature);
+
     // Verify that the requester is the new owner
     if wallet_address != data.new_owner {
+        error!("Unauthorized ownership update: wallet_address={} doesn't match new_owner={}", 
+               wallet_address, data.new_owner);
         return HttpResponse::Forbidden().body("Only the new owner can update property ownership");
     }
 
@@ -762,11 +769,13 @@ pub async fn update_property_ownership(
     
     // Update property ownership in the properties table
     let property_update_result = {
-        use crate::schema::properties::dsl::{properties, property_id as prop_id, owner_wallet, updated_at as prop_updated_at};
+        use crate::schema::properties::dsl::{properties, property_id as prop_id, owner_wallet, is_active, updated_at as prop_updated_at};
         
+        // Set is_active to true for new owner
         diesel::update(properties.filter(prop_id.eq(&data.property_id)))
             .set((
                 owner_wallet.eq(&data.new_owner),
+                is_active.eq(true), // Set is_active to true for active properties
                 prop_updated_at.eq(now),
             ))
             .execute(&mut conn)

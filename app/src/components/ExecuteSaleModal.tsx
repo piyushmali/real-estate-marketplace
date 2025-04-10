@@ -294,9 +294,12 @@ export default function ExecuteSaleModal({
       
       // Ensure the price is always in lamports, and handle both formats correctly
       const price = offer.amount;
-      // Make sure we're using lamports (if amount is small, it's likely in SOL and needs conversion)
-      const priceInLamports = price < 10000 ? Math.floor(price * LAMPORTS_PER_SOL) : price;
+      // More robust check to determine if amount is in SOL or lamports
+      // If less than 0.1 * LAMPORTS_PER_SOL (100,000,000), assume it's in SOL
+      const isInSol = price < 0.1 * LAMPORTS_PER_SOL;
+      const priceInLamports = isInSol ? Math.floor(price * LAMPORTS_PER_SOL) : price;
       console.log("🏠 Original price value:", price);
+      console.log("🏠 Detected as:", isInSol ? "SOL" : "lamports");
       console.log("🏠 Price in lamports:", priceInLamports);
       console.log("🏠 Price in SOL:", priceInLamports / LAMPORTS_PER_SOL);
       
@@ -636,6 +639,17 @@ export default function ExecuteSaleModal({
         
         // After transaction confirmation:
         setTransactionSignature(signature);
+        setTransactionCompleted(true);
+        
+        // Ensure transaction context is used to refresh transactions
+        if (transactionContext) {
+          try {
+            await transactionContext.refreshTransactions();
+            console.log("Transaction history refreshed after sale completion");
+          } catch (refreshError) {
+            console.warn("Failed to refresh transaction history:", refreshError);
+          }
+        }
         
         // If we get here, the transaction was successful
         // Step 1: Record the sale in our backend
@@ -687,9 +701,6 @@ export default function ExecuteSaleModal({
         } else {
           console.warn("Not authenticated, skipping backend updates");
         }
-        
-        // Mark transaction as completed to trigger the useEffect
-        setTransactionCompleted(true);
         
         // Show success toast
         toast({
@@ -925,12 +936,17 @@ export default function ExecuteSaleModal({
   
   // Add an effect to refresh transactions when transaction is completed
   useEffect(() => {
-    if (transactionCompleted && transactionSignature && transactionContext) {
+    if (transactionCompleted && transactionSignature) {
       console.log("Transaction completed, refreshing transaction history");
       const refreshHistory = async () => {
         try {
-          await transactionContext.refreshTransactions();
-          console.log("Transaction history refreshed after completion");
+          // Force a small delay to ensure the backend has processed the transaction
+          setTimeout(async () => {
+            if (transactionContext) {
+              await transactionContext.refreshTransactions();
+              console.log("Transaction history refreshed after completion");
+            }
+          }, 2000);
         } catch (error) {
           console.warn("Failed to refresh transaction history:", error);
         }
@@ -1005,7 +1021,9 @@ export default function ExecuteSaleModal({
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-500 dark:text-gray-400">Price:</span>
-                <span className="font-medium">{(offer.amount / LAMPORTS_PER_SOL).toFixed(2)} SOL</span>
+                <span className="font-medium">{(offer.amount < 0.1 * LAMPORTS_PER_SOL ? 
+                  offer.amount : 
+                  offer.amount / LAMPORTS_PER_SOL).toFixed(4)} SOL</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-500 dark:text-gray-400">Buyer:</span>

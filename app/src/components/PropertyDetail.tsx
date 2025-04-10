@@ -115,7 +115,7 @@ export function PropertyDetail({ property, isOpen, onClose, onMakeOffer }: Prope
                 </div>
                 <div className="bg-primary-50 p-2 rounded-md">
                   <span className="text-xl font-mono font-bold text-primary-700">
-                    {(price / 1000000000).toFixed(2)} SOL
+                    {(price > 10000 ? price / LAMPORTS_PER_SOL : price).toFixed(2)} SOL
                   </span>
                 </div>
               </div>

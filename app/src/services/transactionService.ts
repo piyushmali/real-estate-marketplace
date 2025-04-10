@@ -260,7 +260,7 @@ export const completeNFTTransfer = async (
 export const updatePropertyOwnership = async (
   propertyId: string,
   newOwner: string,
-  offerId: string,
+  offerId: string | number,
   transactionSignature: string,
   token: string
 ): Promise<any> => {
@@ -268,7 +268,7 @@ export const updatePropertyOwnership = async (
     console.log("Updating property ownership with data:", {
       property_id: propertyId,
       new_owner: newOwner,
-      offer_id: offerId,
+      offer_id: offerId.toString(),
       transaction_signature: transactionSignature
     });
     
@@ -277,7 +277,7 @@ export const updatePropertyOwnership = async (
       {
         property_id: propertyId,
         new_owner: newOwner,
-        offer_id: offerId,
+        offer_id: offerId.toString(),
         transaction_signature: transactionSignature,
         program_id: PROGRAM_ID.toString()
       },

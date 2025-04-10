@@ -9,6 +9,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/Badge";
 import { CalendarIcon, HomeIcon, RulerIcon, BedDoubleIcon, ShowerHeadIcon, WalletIcon, MapPinIcon, ExternalLink, Pencil } from "lucide-react";
+import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 
 interface PropertyDetailModalProps {
   property: Property;
@@ -20,8 +21,10 @@ interface PropertyDetailModalProps {
 }
 
 export function PropertyDetailModal({ property, isOpen, onClose, onMakeOffer, isOwner, onEdit }: PropertyDetailModalProps) {
-  // Format price with exactly 1 decimal place and SOL suffix
-  const formattedPrice = `${property.price.toFixed(1)} SOL`;
+  // Format price to display in SOL
+  const formattedPrice = property.price > 10000 
+    ? `${(property.price / LAMPORTS_PER_SOL).toFixed(2)} SOL` 
+    : `${property.price.toFixed(2)} SOL`;
 
   // Format dates
   const createdDate = new Date(property.created_at).toLocaleDateString('en-US', {

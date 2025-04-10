@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { useWallet } from "@/hooks/useWallet";
 import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 
 import { Property } from "@/context/PropertyContext";
 import { Offer } from "@/lib/mockData";
@@ -113,8 +114,15 @@ export const PropertyCard = ({ property, onUpdateProperty, onMakeOffer, onExecut
     setShowUpdateDialog(false);
   };
   
-  // Make sure price is always displayed with 1 decimal place
-  const formattedPrice = property.price.toFixed(1);
+  // Make sure price is always displayed properly in SOL
+  const formattedPrice = () => {
+    // If price is likely in lamports (large number), convert to SOL
+    if (property.price > 10000) {
+      return (property.price / LAMPORTS_PER_SOL).toFixed(2);
+    }
+    // Otherwise, assume it's already in SOL
+    return property.price.toFixed(2);
+  };
   
   // Recalculate price whenever property changes
   useEffect(() => {
@@ -202,7 +210,7 @@ export const PropertyCard = ({ property, onUpdateProperty, onMakeOffer, onExecut
             />
           )}
           <Badge className="absolute top-3 left-3 bg-white/90 text-black font-bold text-sm px-3 py-1 rounded-full shadow-md">
-            {formattedPrice} SOL
+            {formattedPrice()} SOL
           </Badge>
         </div>
         
@@ -266,7 +274,7 @@ export const PropertyCard = ({ property, onUpdateProperty, onMakeOffer, onExecut
               )}
               <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4">
                 <Badge className="bg-white/90 text-black font-bold text-md px-3 py-1 rounded-full shadow-md">
-                  {formattedPrice} SOL
+                  {formattedPrice()} SOL
                 </Badge>
               </div>
             </div>
