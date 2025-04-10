@@ -8,6 +8,7 @@ import { useState } from "react";
 import { useWallet } from "@/hooks/useWallet";
 import PropertyOffersTable from "./PropertyOffersTable";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 
 interface PropertyDetailProps {
   property: Property;
