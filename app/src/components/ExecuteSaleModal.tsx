@@ -11,7 +11,7 @@ import { useWallet } from "@/hooks/useWallet";
 import { useAuth } from "@/hooks/useAuth";
 import { getAssociatedTokenAddress, createAssociatedTokenAccountInstruction, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { WalletNotConnectedError } from '@solana/wallet-adapter-base';
-import { useTransactionRefresh } from "@/pages/Transactions";
+import { useTransactions } from "@/pages/Transactions";
 import axios from "axios";
 
 // Define constants
@@ -64,7 +64,7 @@ export default function ExecuteSaleModal({
   const [isBuyer, setIsBuyer] = useState(false);
   const [isSeller, setIsSeller] = useState(false);
   const [property, setProperty] = useState<Property | null>(null);
-  const transactionContext = useTransactionRefresh();
+  const transactionContext = useTransactions();
   const [transactionCompleted, setTransactionCompleted] = useState(false);
   const [transactionSignature, setTransactionSignature] = useState<string | null>(null);
   

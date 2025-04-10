@@ -798,7 +798,16 @@ export function UpdatePropertyForm({ property, onClose, onSuccess }: UpdatePrope
       const updateData: Record<string, any> = {};
       
       if (price !== property.price.toString()) {
-        updateData['price'] = parseFloat(price); 
+        // Convert price from SOL to lamports (1 SOL = 1,000,000,000 lamports)
+        const priceFloat = parseFloat(price);
+        if (!isNaN(priceFloat)) {
+          const priceInLamports = Math.floor(priceFloat * LAMPORTS_PER_SOL);
+          updateData['price'] = priceInLamports;
+          console.log(`Converting price from ${priceFloat} SOL to ${priceInLamports} lamports for database`);
+        } else {
+          console.log(`Invalid price value: ${price}, using original value`);
+          updateData['price'] = property.price;
+        }
       }
       
       if (imageUrl !== property.metadata_uri) {
@@ -989,7 +998,16 @@ export function UpdatePropertyForm({ property, onClose, onSuccess }: UpdatePrope
       const updateData: Record<string, any> = {};
       
       if (price !== property.price.toString()) {
-        updateData['price'] = parseFloat(price); 
+        // Convert price from SOL to lamports (1 SOL = 1,000,000,000 lamports)
+        const priceFloat = parseFloat(price);
+        if (!isNaN(priceFloat)) {
+          const priceInLamports = Math.floor(priceFloat * LAMPORTS_PER_SOL);
+          updateData['price'] = priceInLamports;
+          console.log(`Converting price from ${priceFloat} SOL to ${priceInLamports} lamports for database`);
+        } else {
+          console.log(`Invalid price value: ${price}, using original value`);
+          updateData['price'] = property.price;
+        }
       }
       
       if (imageUrl !== property.metadata_uri) {
@@ -1030,7 +1048,7 @@ export function UpdatePropertyForm({ property, onClose, onSuccess }: UpdatePrope
         if (onSuccess) {
           const updatedProperty = {
             ...property,
-            price: price && price !== '' ? parseFloat(price) : property.price,
+            price: price && price !== '' ? parseFloat(price) * LAMPORTS_PER_SOL : property.price,
             metadata_uri: imageUrl,
             is_active: isActive
           };

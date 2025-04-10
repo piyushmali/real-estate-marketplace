@@ -21,28 +21,39 @@ interface Transaction {
   status?: 'confirmed' | 'pending';
 }
 
-// Helper function to format wallet addresses
-const formatWalletAddress = (address: string) => {
-  if (!address) return '';
-  return `${address.substring(0, 6)}...${address.substring(address.length - 4)}`;
-};
-
-// Helper function to format transaction signatures
-const formatSignature = (signature: string) => {
-  if (!signature) return '';
-  return `${signature.substring(0, 6)}...${signature.substring(signature.length - 4)}`;
-};
-
-// Create a context to provide transaction refreshing functionality
-type TransactionContextType = {
+// Create a context to make refreshing available to children components
+interface TransactionContextType {
   refreshTransactions: () => Promise<void>;
+}
+
+const TransactionContext = createContext<TransactionContextType>({ 
+  refreshTransactions: async () => {} 
+});
+
+export const useTransactions = () => useContext(TransactionContext);
+
+// Helper function to format wallet addresses for display
+const formatWalletAddress = (address: string): string => {
+  if (!address) return '';
+  if (address.length <= 8) return address;
+  return `${address.substring(0, 4)}...${address.substring(address.length - 4)}`;
 };
 
-export const TransactionContext = createContext<TransactionContextType | null>(null);
-
-export function useTransactionRefresh() {
-  return useContext(TransactionContext);
-}
+// Helper function to deduplicate transactions by property_id, seller, and buyer
+const deduplicateTransactions = (transactions: Transaction[]): Transaction[] => {
+  const seen = new Set<string>();
+  return transactions.filter(tx => {
+    // Create a unique key for each transaction based on property, seller, buyer
+    const key = `${tx.property_id}-${tx.seller_wallet}-${tx.buyer_wallet}`;
+    // If we've seen this transaction combination before, filter it out
+    if (seen.has(key)) {
+      return false;
+    }
+    // Otherwise mark it as seen and keep it
+    seen.add(key);
+    return true;
+  });
+};
 
 export default function Transactions() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -84,7 +95,12 @@ export default function Transactions() {
       
       const fetchedTransactions = await getTransactionHistory(token);
       console.log("Fetched transactions:", fetchedTransactions);
-      setTransactions(fetchedTransactions);
+      
+      // Apply enhanced deduplication logic
+      const uniqueTransactions = deduplicateTransactions(fetchedTransactions);
+      console.log("After deduplication:", uniqueTransactions);
+      
+      setTransactions(uniqueTransactions);
     } catch (err) {
       console.error("Error fetching transactions:", err);
       setError("Failed to fetch transactions. Please try again.");
@@ -95,7 +111,7 @@ export default function Transactions() {
     } finally {
       setIsLoading(false);
     }
-  }, [toast]); // Only depends on toast so it stays stable
+  }, [toast]);
   
   // Fetch transactions on component mount
   useEffect(() => {

@@ -173,9 +173,10 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
       
       // Handle price conversion from SOL to lamports
       if (updates.price !== undefined) {
-        // Keep the price in SOL, don't convert to lamports
-        apiData['price'] = updates.price;
-        console.log(`Using price in SOL: ${updates.price}`);
+        // Convert price from SOL to lamports (backend expects integer lamports)
+        const priceInLamports = Math.floor(updates.price * LAMPORTS_PER_SOL);
+        apiData['price'] = priceInLamports;
+        console.log(`Converting price from ${updates.price} SOL to ${priceInLamports} lamports for database`);
       }
       
       // Map metadata_uri correctly - use this field for image URL updates

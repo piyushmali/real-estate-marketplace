@@ -219,8 +219,53 @@ export const getTransactionHistory = async (token: string): Promise<any[]> => {
     
     console.log("Raw transaction data:", response.data.transactions);
     
+    // Enhanced filter to remove duplicate transactions using multiple properties
+    const uniqueTransactions = response.data.transactions.reduce((acc: any[], tx: any) => {
+      // First check for transaction_signature duplicates (most accurate)
+      if (tx.transaction_signature) {
+        const hasDuplicateSignature = acc.some(
+          (existing) => existing.transaction_signature === tx.transaction_signature
+        );
+        
+        if (hasDuplicateSignature) {
+          return acc; // Skip this transaction as it's a duplicate
+        }
+      }
+      
+      // Then check for property+seller+buyer combination duplicates
+      const transactionKey = `${tx.property_id}-${tx.seller_wallet}-${tx.buyer_wallet}`;
+      const hasSameTransaction = acc.some(
+        (existing) => 
+          `${existing.property_id}-${existing.seller_wallet}-${existing.buyer_wallet}` === transactionKey
+      );
+      
+      if (hasSameTransaction) {
+        // If timestamps exist, keep the newer one and replace the old one
+        if (tx.timestamp && acc.find(
+          (existing) => 
+            `${existing.property_id}-${existing.seller_wallet}-${existing.buyer_wallet}` === transactionKey && 
+            new Date(existing.timestamp) < new Date(tx.timestamp)
+        )) {
+          // Remove the older transaction
+          const index = acc.findIndex(
+            (existing) => 
+              `${existing.property_id}-${existing.seller_wallet}-${existing.buyer_wallet}` === transactionKey
+          );
+          if (index !== -1) {
+            acc.splice(index, 1);
+            acc.push(tx);
+          }
+        }
+        return acc; // Skip adding duplicate transactions
+      }
+      
+      // If we get here, it's a new unique transaction
+      acc.push(tx);
+      return acc;
+    }, []);
+    
     // Process transactions to add status information
-    const transactions = response.data.transactions.map((tx: any) => {
+    const transactions = uniqueTransactions.map((tx: any) => {
       // For now all transactions from database are considered confirmed
       return {
         ...tx,
