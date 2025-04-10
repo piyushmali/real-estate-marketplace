@@ -992,189 +992,42 @@ export default function ExecuteSaleModal({
   
   return (
     <Dialog open={visible} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-md md:max-w-2xl max-h-[90vh] overflow-y-auto bg-white dark:bg-gray-900">
-        <div className="absolute inset-0 bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950 dark:to-purple-950 rounded-md opacity-70 -z-10" />
+      <DialogContent className="sm:max-w-md md:max-w-2xl bg-white">
         <DialogHeader>
           <DialogTitle className="text-xl font-bold">Execute Property Sale</DialogTitle>
-          <DialogDescription>
-            {isBuyer && (
-              <div className="text-sm mb-4 bg-blue-50 dark:bg-blue-950 p-4 rounded-lg border border-blue-200 dark:border-blue-800">
-                <div className="font-medium mb-1">About this transaction</div>
-                <p className="mb-2">This will execute the sale of the property NFT for {(offer.amount / LAMPORTS_PER_SOL).toFixed(2)} SOL.</p>
-                <p>The transaction will:</p>
-                <ul className="list-disc pl-5 space-y-1">
-                  <li>Transfer {(offer.amount / LAMPORTS_PER_SOL).toFixed(2)} SOL from your wallet to the seller</li>
-                  <li>Transfer the property NFT from the seller to you</li>
-                  <li>Update the property ownership records</li>
-                  <li>Create a transaction history record</li>
-                </ul>
-                <p className="mt-2 text-xs text-blue-700 dark:text-blue-400">All of this happens in a single atomic transaction - either all operations succeed or none do.</p>
-              </div>
-            )}
-            
-            {isSeller && !waitingForBuyer && (
-              <div className="text-sm mb-4 bg-blue-50 dark:bg-blue-950 p-4 rounded-lg border border-blue-200 dark:border-blue-800">
-                <div className="font-medium mb-1">About this transaction</div>
-                <p>You're the seller of this property. Review the offer and sign the transaction to proceed with the sale.</p>
-              </div>
-            )}
-            
-            {waitingForBuyer && (
-              <div className="text-sm mb-4 bg-amber-50 dark:bg-amber-950 p-4 rounded-lg border border-amber-200 dark:border-amber-800">
-                <div className="font-medium">Waiting for buyer signature</div>
-                <p>You've signed this transaction. Now the buyer needs to sign it to complete the purchase.</p>
-              </div>
-            )}
-            
-            {waitingForSeller && (
-              <div className="text-sm mb-4 bg-amber-50 dark:bg-amber-950 p-4 rounded-lg border border-amber-200 dark:border-amber-800">
-                <div className="font-medium">Waiting for seller signature</div>
-                <p>The seller needs to sign this transaction before you can complete the purchase.</p>
-              </div>
-            )}
-            
-            {!connected && (
-              <div className="text-sm mb-4 bg-red-50 dark:bg-red-950 p-4 rounded-lg border border-red-200 dark:border-red-800">
-                <div className="font-medium">Wallet not connected</div>
-                <p>Please connect your wallet to proceed with this transaction.</p>
-              </div>
-            )}
-            
-            <div className="space-y-2 mt-4 bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
-              <div className="flex justify-between">
-                <span className="text-gray-500 dark:text-gray-400">Property ID:</span>
-                <span className="font-medium">{offer.property_id}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500 dark:text-gray-400">Price:</span>
-                <div className="text-gray-900 font-medium">{offer ? (offer.amount / LAMPORTS_PER_SOL).toFixed(2) : "0"} SOL</div>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500 dark:text-gray-400">Buyer:</span>
-                <span className="font-mono text-xs truncate max-w-[200px]">{offer.buyer_wallet}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500 dark:text-gray-400">Seller:</span>
-                <span className="font-mono text-xs truncate max-w-[200px]">{offer.seller_wallet}</span>
-              </div>
-            </div>
-          </DialogDescription>
         </DialogHeader>
         
-        {/* Debugging UI sections - only shown in development mode */}
-        {process.env.NODE_ENV === 'development' && (
-          <div className="mt-4 space-y-2">
-            {/* User role detection */}
-            <div className="text-xs bg-slate-100 dark:bg-slate-800 p-3 rounded">
-              <h4 className="font-bold mb-1">User Role Detection:</h4>
-              <div className="grid grid-cols-2 gap-1">
-                <div>Wallet connected:</div>
-                <div>{connected ? '✅' : '❌'}</div>
-                <div>Detected as buyer:</div>
-                <div>{isBuyer ? '✅' : '❌'}</div>
-                <div>Detected as seller:</div>
-                <div>{isSeller ? '✅' : '❌'}</div>
-                <div>Buyer wallet match:</div>
-                <div>{walletAddress === offer.buyer_wallet ? '✅' : '❌'}</div>
-                <div>Seller wallet match:</div>
-                <div>{walletAddress === offer.seller_wallet ? '✅' : '❌'}</div>
-              </div>
-            </div>
-              
-            {/* Status messages */}
-            <div className="text-xs bg-slate-100 dark:bg-slate-800 p-3 rounded">
-              <h4 className="font-bold mb-1">Status:</h4>
-              <div className="grid grid-cols-2 gap-1">
-                <div>Waiting for buyer:</div>
-                <div>{waitingForBuyer ? '✅' : '❌'}</div>
-                <div>Waiting for seller:</div>
-                <div>{waitingForSeller ? '✅' : '❌'}</div>
-                <div>Partially signed:</div>
-                <div>{partiallySignedTxBase64 ? '✅' : '❌'}</div>
-              </div>
-            </div>
-              
-            {/* Test flow instructions */}
-            <div className="text-xs bg-slate-100 dark:bg-slate-800 p-3 rounded">
-              <h4 className="font-bold mb-1">Test flow instructions:</h4>
-              <ol className="list-decimal pl-5 space-y-1">
-                <li>Connect first as seller, click "Start Sale"</li>
-                <li>Then connect as buyer, click "Execute Sale"</li>
-                <li>Watch console logs for debugging info</li>
-              </ol>
-            </div>
-              
-            {/* Action debug */}
-            <div className="text-xs bg-slate-100 dark:bg-slate-800 p-3 rounded">
-              <h4 className="font-bold mb-1">Action Debug:</h4>
-              <div className="grid grid-cols-2 gap-1">
-                <div>Current action:</div>
-                <div>{getUserAction()}</div>
-                <div>Button visible:</div>
-                <div>{getUserAction() !== 'none' ? '✅' : '❌'}</div>
-              </div>
-            </div>
+        <div className="space-y-2 mt-4 bg-white p-4 rounded-lg">
+          <div className="flex justify-between">
+            <span className="text-gray-500">Property ID:</span>
+            <span className="font-medium">{offer.property_id}</span>
           </div>
-        )}
-          
-        {transactionSignature && (
-          <div className="my-4 text-center">
-            <Button
-              onClick={() => window.open(`https://explorer.solana.com/tx/${transactionSignature}?cluster=devnet`, '_blank')}
-              variant="outline"
-              className="text-xs"
-            >
-              View Transaction
-            </Button>
+          <div className="flex justify-between">
+            <span className="text-gray-500">Price:</span>
+            <span className="font-medium">{(offer.amount / LAMPORTS_PER_SOL).toFixed(2)} SOL</span>
           </div>
-        )}
-          
-        <DialogFooter className="mt-6 flex items-center">
-          <div className="flex-1">
-            <Button 
-              variant="outline" 
-              onClick={simulateTransactionBeforeSubmit}
-              disabled={isSimulating || isSubmitting}
-              className={getUserAction() !== "none" ? "block" : "hidden"}
-            >
-              {isSimulating ? 'Simulating...' : 'Simulate Transaction'}
-            </Button>
+          <div className="flex justify-between">
+            <span className="text-gray-500">Buyer:</span>
+            <span className="font-mono text-xs truncate max-w-[200px]">{offer.buyer_wallet}</span>
           </div>
-          
-          <div className="flex space-x-2">
-            <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
-              Cancel
-            </Button>
-          
-            {getUserAction() === "sign" && (
-              <Button 
-                onClick={handleSellerSign}
-                disabled={isSubmitting}
-                className="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white"
-              >
-                {isSubmitting ? 'Processing...' : 'Start Sale'}
-              </Button>
-            )}
-            
-            {getUserAction() === "complete" && (
-              <Button 
-                onClick={handleBuyerComplete}
-                disabled={isSubmitting}
-                className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white"
-              >
-                {isSubmitting ? 'Processing...' : 'Execute Sale'}
-              </Button>
-            )}
-            
-            {getUserAction() === "waiting" && (
-              <Button 
-                disabled
-                className="bg-amber-500 text-white"
-              >
-                {isBuyer ? 'Waiting for Seller' : 'Waiting for Buyer'}
-              </Button>
-            )}
+          <div className="flex justify-between">
+            <span className="text-gray-500">Seller:</span>
+            <span className="font-mono text-xs truncate max-w-[200px]">{offer.seller_wallet}</span>
           </div>
+        </div>
+        
+        <DialogFooter className="mt-6 flex justify-end space-x-2">
+          <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
+            Cancel
+          </Button>
+          
+          <Button 
+            onClick={handleBuyerComplete}
+            disabled={isSubmitting}
+            className="bg-green-600 hover:bg-green-700 text-white"
+          >
+            {isSubmitting ? 'Processing...' : 'Execute Sale'}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
