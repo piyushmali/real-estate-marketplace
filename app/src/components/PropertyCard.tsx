@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/button";
-import { Home, Bed, Bath, ArrowRight, MapPin, Edit, DollarSign, CheckCircle } from "lucide-react";
+import { Home, Bed, Bath, ArrowRight, MapPin, Edit, DollarSign, CheckCircle, Hash } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useWallet } from "@/hooks/useWallet";
 import { useState, useEffect } from "react";
@@ -124,6 +124,15 @@ export const PropertyCard = ({ property, onUpdateProperty, onMakeOffer, onExecut
     return property.price.toFixed(2);
   };
   
+  // Format property ID to be shorter and more readable
+  const formatPropertyId = (id: string) => {
+    if (!id) return '';
+    if (id.length > 10) {
+      return id.substring(0, 7) + '...';
+    }
+    return id;
+  };
+  
   // Recalculate price whenever property changes
   useEffect(() => {
     // Log to verify we're getting updated property data
@@ -133,59 +142,11 @@ export const PropertyCard = ({ property, onUpdateProperty, onMakeOffer, onExecut
   return (
     <>
       <Card 
-        className="w-full h-[380px] flex flex-col overflow-hidden transition-all duration-300 hover:shadow-xl hover:scale-[1.02] rounded-xl border-2 border-gray-200 shadow-md relative touch-manipulation"
+        className="w-full h-[380px] flex flex-col overflow-hidden transition-all duration-300 hover:shadow-xl hover:scale-[1.02] rounded-xl border-2 border-gray-200 shadow-md relative touch-manipulation backdrop-blur-sm bg-white/90"
         onMouseEnter={() => !isMobile && setShowActions(true)}
         onMouseLeave={() => !isMobile && setShowActions(false)}
         onClick={handleCardInteraction}
       >
-        {showActions && (
-          <div className="absolute right-2 top-2 z-10 flex flex-col gap-2">
-            {isOwner ? (
-              <>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  className="flex items-center gap-1 bg-white/90 shadow-sm"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleOpenUpdateForm();
-                  }}
-                >
-                  <Edit className="h-4 w-4" />
-                  <span className="sm:inline">{isMobile ? "" : "Update"}</span>
-                </Button>
-                {hasPendingOffers && (
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    className="flex items-center gap-1 bg-white/90 shadow-sm"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onExecuteSale?.(property, offers[0]);
-                    }}
-                  >
-                    <CheckCircle className="h-4 w-4" />
-                    <span className="sm:inline">{isMobile ? "" : "Execute Sale"}</span>
-                  </Button>
-                )}
-              </>
-            ) : (
-              <Button
-                size="sm"
-                variant="secondary"
-                className="flex items-center gap-1 bg-white/90 shadow-sm"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onMakeOffer?.(property);
-                }}
-              >
-                <DollarSign className="h-4 w-4" />
-                <span className="sm:inline">{isMobile ? "" : "Make Offer"}</span>
-              </Button>
-            )}
-          </div>
-        )}
-        
         {/* Mobile action hint */}
         {isMobile && !showActions && (
           <div className="absolute right-2 top-2 z-10 bg-white/80 rounded-full p-1 shadow-sm">
@@ -193,7 +154,43 @@ export const PropertyCard = ({ property, onUpdateProperty, onMakeOffer, onExecut
           </div>
         )}
 
-        <div className="relative w-full h-40 overflow-hidden">
+        {/* Header and Property Information - Now at the top */}
+        <CardHeader className="py-3 px-4">
+          <div className="flex items-center justify-between mb-1">
+            <div className="flex items-center gap-1">
+              <MapPin className="size-4 text-rose-500" />
+              <CardTitle className="text-base font-bold line-clamp-1">{displayLocation()}</CardTitle>
+            </div>
+            <Badge className="bg-white text-black border border-gray-200 font-bold text-sm px-2 py-1 rounded-md shadow-sm">
+              {formattedPrice()} SOL
+            </Badge>
+          </div>
+          <div className="flex items-center gap-1 mt-1">
+            <Hash className="h-3 w-3 text-gray-500" />
+            <span className="text-xs text-gray-600 font-mono">{property.property_id}</span>
+          </div>
+        </CardHeader>
+        
+        {/* Property Features - In the middle */}
+        <CardContent className="py-0 px-4 flex-grow">
+          <div className="grid grid-cols-3 gap-3 text-sm">
+            <div className="flex flex-col items-center p-2 bg-gray-50 rounded-lg shadow-sm">
+              <Home className="size-5 text-blue-600 mb-1" />
+              <span className="font-medium">{property.square_feet > 0 ? property.square_feet.toLocaleString() : 'N/A'} ft²</span>
+            </div>
+            <div className="flex flex-col items-center p-2 bg-gray-50 rounded-lg shadow-sm">
+              <Bed className="size-5 text-indigo-600 mb-1" />
+              <span className="font-medium">{property.bedrooms > 0 ? property.bedrooms : 'N/A'} {property.bedrooms === 1 ? 'Bed' : 'Beds'}</span>
+            </div>
+            <div className="flex flex-col items-center p-2 bg-gray-50 rounded-lg shadow-sm">
+              <Bath className="size-5 text-teal-600 mb-1" />
+              <span className="font-medium">{property.bathrooms > 0 ? property.bathrooms : 'N/A'} {property.bathrooms === 1 ? 'Bath' : 'Baths'}</span>
+            </div>
+          </div>
+        </CardContent>
+        
+        {/* Image - Now at the bottom */}
+        <div className="relative w-full h-40 mt-2 overflow-hidden">
           <div className={cn("absolute inset-0 bg-gradient-to-r", gradient, "opacity-40")}></div>
           {!imageError ? (
             <img
@@ -209,50 +206,51 @@ export const PropertyCard = ({ property, onUpdateProperty, onMakeOffer, onExecut
               className="w-full h-full object-cover"
             />
           )}
-          <Badge className="absolute top-3 left-3 bg-white/90 text-black font-bold text-sm px-3 py-1 rounded-full shadow-md">
-            {formattedPrice()} SOL
-          </Badge>
         </div>
         
-        <CardHeader className="py-3 px-4">
-          <div className="flex items-center gap-1 mb-1">
-            <MapPin className="size-4 text-rose-500" />
-            <CardTitle className="text-base font-bold line-clamp-1">{displayLocation()}</CardTitle>
-          </div>
-        </CardHeader>
-        
-        <CardContent className="py-0 px-4 flex-grow">
-          <div className="grid grid-cols-3 gap-3 text-sm mt-2">
-            <div className="flex flex-col items-center p-2 bg-gray-50 rounded-lg">
-              <Home className="size-5 text-blue-600 mb-1" />
-              <span className="font-medium">{property.square_feet > 0 ? property.square_feet.toLocaleString() : 'N/A'} ft²</span>
-            </div>
-            <div className="flex flex-col items-center p-2 bg-gray-50 rounded-lg">
-              <Bed className="size-5 text-indigo-600 mb-1" />
-              <span className="font-medium">{property.bedrooms > 0 ? property.bedrooms : 'N/A'} {property.bedrooms === 1 ? 'Bed' : 'Beds'}</span>
-            </div>
-            <div className="flex flex-col items-center p-2 bg-gray-50 rounded-lg">
-              <Bath className="size-5 text-teal-600 mb-1" />
-              <span className="font-medium">{property.bathrooms > 0 ? property.bathrooms : 'N/A'} {property.bathrooms === 1 ? 'Bath' : 'Baths'}</span>
-            </div>
-          </div>
-          <p className="text-xs text-gray-500 mt-3 font-mono truncate">ID: {property.property_id}</p>
-        </CardContent>
-        
+        {/* Footer - At the very bottom */}
         <CardFooter className="pt-3 pb-4 px-4 border-t mt-auto">
-          <Button 
-            className="ml-auto flex items-center gap-2 bg-black text-white hover:bg-gray-800 rounded-full px-4 py-2 text-sm font-medium transition-all duration-200 shadow-sm hover:shadow-md"
-            onClick={() => setShowDetailsDialog(true)}
-          >
-            View Details
-            <ArrowRight className="size-4" />
-          </Button>
+          <div className="w-full flex justify-between gap-3">
+            {isOwner ? (
+              <Button
+                variant="outline"
+                className="flex items-center gap-1 rounded-md h-10 px-4"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleOpenUpdateForm();
+                }}
+              >
+                <Edit className="h-4 w-4" />
+                Update
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                className="flex items-center gap-1 rounded-md h-10 px-4"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onMakeOffer?.(property);
+                }}
+              >
+                <DollarSign className="h-4 w-4" />
+                Make Offer
+              </Button>
+            )}
+            
+            <Button 
+              className="flex items-center gap-2 bg-black text-white hover:bg-gray-800 rounded-md h-10 px-4 text-sm font-medium transition-all duration-200 shadow-sm hover:shadow-md"
+              onClick={() => setShowDetailsDialog(true)}
+            >
+              View Details
+              <ArrowRight className="size-4" />
+            </Button>
+          </div>
         </CardFooter>
       </Card>
       
       {/* Property Details Dialog */}
       <Dialog open={showDetailsDialog} onOpenChange={setShowDetailsDialog}>
-        <DialogContent className="sm:max-w-[600px] bg-white">
+        <DialogContent className="sm:max-w-[600px] bg-white rounded-xl">
           <DialogHeader>
             <DialogTitle className="text-xl font-bold">{displayLocation()}</DialogTitle>
           </DialogHeader>
@@ -343,17 +341,16 @@ export const PropertyCard = ({ property, onUpdateProperty, onMakeOffer, onExecut
       
       {/* Update Property Dialog */}
       <Dialog open={showUpdateDialog} onOpenChange={setShowUpdateDialog}>
-        <DialogContent className="sm:max-w-[500px] bg-white p-0 overflow-hidden">
-          <DialogHeader className="px-6 pt-6 pb-4 border-b">
-            <DialogTitle className="text-xl font-bold">Update Property</DialogTitle>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>Update Property</DialogTitle>
           </DialogHeader>
-          <div className="px-6 py-4">
-            <UpdatePropertyForm 
-              property={property} 
-              onClose={() => setShowUpdateDialog(false)}
-              onSuccess={handleUpdateSuccess}
-            />
-          </div>
+          
+          <UpdatePropertyForm 
+            property={property}
+            onUpdateSuccess={handleUpdateSuccess}
+            onCancel={() => setShowUpdateDialog(false)}
+          />
         </DialogContent>
       </Dialog>
     </>
