@@ -341,7 +341,7 @@ export const PropertyCard = ({ property, onUpdateProperty, onMakeOffer, onExecut
       
       {/* Update Property Dialog */}
       <Dialog open={showUpdateDialog} onOpenChange={setShowUpdateDialog}>
-        <DialogContent className="sm:max-w-[600px]">
+        <DialogContent className="sm:max-w-[600px] bg-white">
           <DialogHeader>
             <DialogTitle>Update Property</DialogTitle>
           </DialogHeader>

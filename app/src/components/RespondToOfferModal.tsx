@@ -54,8 +54,6 @@ export default function RespondToOfferModal({
 }: RespondToOfferModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [simulationLogs, setSimulationLogs] = useState<string[]>([]);
-  const [showLogs, setShowLogs] = useState(false);
   const [offerAccepted, setOfferAccepted] = useState(false);
   const [transactionSignature, setTransactionSignature] = useState<string | null>(null);
   const [property, setProperty] = useState<Property | null>(null);
@@ -78,8 +76,6 @@ export default function RespondToOfferModal({
   useEffect(() => {
     if (!visible) {
       setErrors({});
-      setSimulationLogs([]);
-      setShowLogs(false);
       setOfferAccepted(false);
       setTransactionSignature(null);
       setProperty(null);
@@ -244,18 +240,6 @@ export default function RespondToOfferModal({
       toPubkey,
       lamports
     });
-  };
-
-  // Display simulation logs in the UI
-  const displaySimulationLogs = (logs: string[]) => {
-    setSimulationLogs(logs);
-    setShowLogs(true);
-  };
-
-  // Clear simulation logs
-  const clearSimulationLogs = () => {
-    setSimulationLogs([]);
-    setShowLogs(false);
   };
 
   // Handler for accepting offer
@@ -508,12 +492,6 @@ export default function RespondToOfferModal({
         if (simulationResult.value.err) {
           console.error("Transaction simulation failed:", simulationResult.value.err);
           
-          // Display logs from simulation for debugging
-          if (simulationResult.value.logs) {
-            console.log("Simulation logs:", simulationResult.value.logs);
-            displaySimulationLogs(simulationResult.value.logs);
-          }
-          
           // Extract meaningful error message if possible
           let errorMessage = "Transaction simulation failed.";
           if (typeof simulationResult.value.err === 'object' && simulationResult.value.err !== null) {
@@ -543,10 +521,6 @@ export default function RespondToOfferModal({
         }
         
         console.log("Transaction simulation successful!");
-        if (simulationResult.value.logs) {
-          console.log("Simulation logs:", simulationResult.value.logs);
-          displaySimulationLogs(simulationResult.value.logs);
-        }
       } catch (simulationError) {
         console.error("Error during transaction simulation:", simulationError);
         setErrors({ simulation: `Simulation error: ${(simulationError as Error).message}` });
@@ -712,12 +686,6 @@ export default function RespondToOfferModal({
         if (simulationResult.value.err) {
           console.error("Transaction simulation failed:", simulationResult.value.err);
 
-          // Display logs from simulation for debugging
-          if (simulationResult.value.logs) {
-            console.log("Simulation logs:", simulationResult.value.logs);
-            displaySimulationLogs(simulationResult.value.logs);
-          }
-
           // Extract meaningful error message if possible
           let errorMessage = "Transaction simulation failed.";
           if (typeof simulationResult.value.err === 'object' && simulationResult.value.err !== null) {
@@ -741,10 +709,6 @@ export default function RespondToOfferModal({
         }
 
         console.log("Transaction simulation successful!");
-        if (simulationResult.value.logs) {
-          console.log("Simulation logs:", simulationResult.value.logs);
-          displaySimulationLogs(simulationResult.value.logs);
-        }
       } catch (simulationError) {
         console.error("Error during transaction simulation:", simulationError);
         setErrors({ simulation: `Simulation error: ${(simulationError as Error).message}` });
@@ -1074,27 +1038,6 @@ export default function RespondToOfferModal({
               <div className="bg-red-50 p-4 rounded-md text-sm text-red-800">
                 <p className="font-medium">NFT Error:</p>
                 <p className="mt-1">{errors.nft}</p>
-              </div>
-            )}
-            
-            {showLogs && simulationLogs.length > 0 && (
-              <div className="bg-gray-800 p-4 rounded-md text-xs text-gray-200 font-mono overflow-x-auto max-h-40 overflow-y-auto">
-                <div className="flex justify-between items-center mb-2">
-                  <h4 className="text-gray-400">Simulation Logs</h4>
-                  <Button 
-                    variant="ghost" 
-                    size="sm"
-                    className="h-6 text-xs text-gray-400 hover:text-white"
-                    onClick={clearSimulationLogs}
-                  >
-                    Clear
-                  </Button>
-                </div>
-                {simulationLogs.map((log, i) => (
-                  <div key={i} className="py-0.5">
-                    {log}
-                  </div>
-                ))}
               </div>
             )}
           </div>

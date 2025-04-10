@@ -48,10 +48,12 @@ export function Navbar() {
     <nav className="bg-white border-b border-blue-600 shadow-sm px-4 py-2.5 sticky top-0 z-50">
       <div className="flex flex-wrap justify-between items-center mx-auto max-w-screen-xl">
         <Link href="/" className="flex items-center">
-          <svg className="h-8 w-8 text-blue-700 mr-2" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12 2L1 12h3v8h6v-6h4v6h6v-8h3L12 2z" />
-          </svg>
-          <span className="text-blue-800 font-semibold text-xl">SolEstate</span>
+          <img 
+            src="/solulab.png" 
+            alt="Solulab Logo" 
+            className="h-10 mr-2" 
+          />
+          <span className="text-blue-800 font-semibold text-xl">Solulab Real Estate</span>
         </Link>
         
         <div className="flex items-center">
@@ -113,10 +115,12 @@ export function Navbar() {
                 <SheetHeader className="mb-6 p-4">
                   <SheetTitle className="text-left text-xl font-bold text-white">
                     <div className="flex items-center">
-                      <svg className="h-8 w-8 text-white mr-2" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M12 2L1 12h3v8h6v-6h4v6h6v-8h3L12 2z" />
-                      </svg>
-                      SolEstate
+                      <img 
+                        src="/solulab.png" 
+                        alt="Solulab Logo" 
+                        className="h-8 mr-2" 
+                      />
+                      Solulab Real Estate
                     </div>
                   </SheetTitle>
                 </SheetHeader>

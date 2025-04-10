@@ -39,7 +39,7 @@ export function LegacyWalletConnectButton() {
             
             toast({
               title: "Wallet connected & authenticated",
-              description: "You're now connected to SolEstate marketplace",
+              description: "You're now connected to Solulab Real Estate marketplace",
             });
           }
         } catch (error) {

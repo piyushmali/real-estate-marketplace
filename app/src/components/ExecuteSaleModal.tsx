@@ -58,8 +58,6 @@ export default function ExecuteSaleModal({
   const [waitingForBuyer, setWaitingForBuyer] = useState(false);
   const [waitingForSeller, setWaitingForSeller] = useState(false);
   const [partiallySignedTxBase64, setPartiallySignedTxBase64] = useState<string | null>(null);
-  const [simulationLogs, setSimulationLogs] = useState<string[]>([]);
-  const [showLogs, setShowLogs] = useState(false);
   const [isSimulating, setIsSimulating] = useState(false);
   const [isBuyer, setIsBuyer] = useState(false);
   const [isSeller, setIsSeller] = useState(false);
@@ -79,8 +77,12 @@ export default function ExecuteSaleModal({
       setWaitingForBuyer(false);
       setWaitingForSeller(false);
       setPartiallySignedTxBase64(null);
-      setSimulationLogs([]);
-      setShowLogs(false);
+      setIsSimulating(false);
+      setIsBuyer(false);
+      setIsSeller(false);
+      setProperty(null);
+      setTransactionCompleted(false);
+      setTransactionSignature(null);
     }
   }, [visible, propertyNftMint, offer]);
   
@@ -187,12 +189,6 @@ export default function ExecuteSaleModal({
       transactionHistory: transactionHistoryPDA,
       marketplaceAuthority
     };
-  };
-  
-  // Display simulation logs to the user
-  const displaySimulationLogs = (logs: string[]) => {
-    setSimulationLogs(logs);
-    setShowLogs(true);
   };
   
   // Create execute_sale instruction - UPDATED to match test file structure exactly
@@ -531,10 +527,6 @@ export default function ExecuteSaleModal({
   const simulateTransactionBeforeSubmit = async () => {
     try {
       setIsSimulating(true);
-      setSimulationLogs([
-        "Starting simulation...",
-        "Creating test transaction with only SOL transfers"
-      ]);
       
       if (!property) {
         await fetchPropertyDetails();
@@ -543,7 +535,6 @@ export default function ExecuteSaleModal({
       // Create the test transaction
       const transaction = await createTransaction(offer, property);
       if (!transaction) {
-        setSimulationLogs([...simulationLogs, "Failed to create transaction"]);
         return false;
       }
       
@@ -551,27 +542,10 @@ export default function ExecuteSaleModal({
       const connection = new Connection(SOLANA_RPC_ENDPOINT, 'confirmed');
       
       // Simulate the transaction
-      setSimulationLogs([...simulationLogs, "Simulating transaction on Solana"]);
-      
       const result = await connection.simulateTransaction(transaction);
-      
-      // Display the detailed results
-      setSimulationLogs([
-        ...simulationLogs, 
-        `Transaction simulation complete:`,
-        `Success: ${result.value.err ? 'No' : 'Yes'}`,
-        `Error: ${result.value.err ? JSON.stringify(result.value.err) : 'None'}`,
-        `Log messages:`,
-        ...(result.value.logs || ["No logs available"]).map(log => `   ${log}`)
-      ]);
       
       return !result.value.err;
     } catch (error) {
-      setSimulationLogs([
-        ...simulationLogs,
-        `Simulation error: ${error.message || "Unknown error"}`,
-        `Stack: ${error.stack || "No stack available"}`
-      ]);
       return false;
     } finally {
       setIsSimulating(false);
@@ -978,7 +952,6 @@ export default function ExecuteSaleModal({
     if (visible) {
       console.log("Modal opened, initializing data");
       // Reset states
-      setSimulationLogs([]);
       setIsSimulating(false);
       setIsSubmitting(false);
       
@@ -1074,9 +1047,7 @@ export default function ExecuteSaleModal({
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-500 dark:text-gray-400">Price:</span>
-                <span className="font-medium">{(offer.amount < 0.1 * LAMPORTS_PER_SOL ? 
-                  offer.amount : 
-                  offer.amount / LAMPORTS_PER_SOL).toFixed(4)} SOL</span>
+                <div className="text-gray-900 font-medium">{offer ? (offer.amount / LAMPORTS_PER_SOL).toFixed(2) : "0"} SOL</div>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-500 dark:text-gray-400">Buyer:</span>
@@ -1146,11 +1117,15 @@ export default function ExecuteSaleModal({
           </div>
         )}
           
-        {showLogs && (
-          <div className="mt-4 max-h-60 overflow-y-auto p-3 text-xs font-mono bg-black text-green-400 rounded">
-            {simulationLogs.map((log, i) => (
-              <div key={i}>{log}</div>
-            ))}
+        {transactionSignature && (
+          <div className="my-4 text-center">
+            <Button
+              onClick={() => window.open(`https://explorer.solana.com/tx/${transactionSignature}?cluster=devnet`, '_blank')}
+              variant="outline"
+              className="text-xs"
+            >
+              View Transaction
+            </Button>
           </div>
         )}
           
