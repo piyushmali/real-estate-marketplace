@@ -25,6 +25,8 @@ pub struct Property {
     pub is_active: bool,
     pub created_at: chrono::NaiveDateTime,
     pub updated_at: chrono::NaiveDateTime,
+    pub nft_mint_address: String,  // New field
+    pub nft_token_account: String, // New field
 }
 
 #[derive(Queryable, Insertable, Serialize, Deserialize)]

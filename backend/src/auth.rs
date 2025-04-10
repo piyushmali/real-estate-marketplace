@@ -7,15 +7,16 @@ use solana_sdk::signature::Signature;
 use std::env;
 use std::str::FromStr;
 use uuid::Uuid;
+use tracing::{error, info};
 
 use crate::db;
 use crate::models::User;
 use crate::schema::users;
 
 #[derive(Debug, Serialize, Deserialize)]
-struct Claims {
-    sub: String, // Wallet address
-    exp: usize,  // Expiration time
+pub struct Claims {
+    pub sub: String, // Wallet address
+    pub exp: usize,  // Expiration time
 }
 
 pub fn generate_jwt(wallet_address: &str) -> Result<String, jsonwebtoken::errors::Error> {
@@ -24,6 +25,9 @@ pub fn generate_jwt(wallet_address: &str) -> Result<String, jsonwebtoken::errors
         .checked_add_signed(Duration::hours(24))
         .expect("valid timestamp")
         .timestamp() as usize;
+
+    // Add logging to see what wallet address is being used for the JWT
+    info!("Generating JWT for wallet: {}", wallet_address);
 
     let claims = Claims {
         sub: wallet_address.to_string(),
@@ -60,7 +64,14 @@ pub fn verify_wallet_signature(wallet_address: &str, signature: &str, message: &
 }
 
 pub fn store_user_jwt(wallet_address: &str, jwt: &str) -> Result<(), diesel::result::Error> {
-    let conn = &mut db::establish_connection();
+    let mut conn = match db::establish_connection() {
+        Ok(conn) => conn,
+        Err(e) => {
+            error!("Failed to connect to database: {}", e);
+            return Err(diesel::result::Error::RollbackTransaction);
+        }
+    };
+    
     let new_user = User {
         id: Uuid::new_v4(),
         wallet_address: wallet_address.to_string(),
@@ -73,6 +84,6 @@ pub fn store_user_jwt(wallet_address: &str, jwt: &str) -> Result<(), diesel::res
         .on_conflict(users::wallet_address)
         .do_update()
         .set(users::jwt_token.eq(jwt))
-        .execute(conn)?;
+        .execute(&mut conn)?;
     Ok(())
 }

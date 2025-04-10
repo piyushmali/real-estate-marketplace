@@ -7,8 +7,9 @@ import {
   DialogFooter
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/ui/Badge";
 import { CalendarIcon, HomeIcon, RulerIcon, BedDoubleIcon, ShowerHeadIcon, WalletIcon, MapPinIcon, ExternalLink, Pencil } from "lucide-react";
+import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 
 interface PropertyDetailModalProps {
   property: Property;
@@ -20,12 +21,10 @@ interface PropertyDetailModalProps {
 }
 
 export function PropertyDetailModal({ property, isOpen, onClose, onMakeOffer, isOwner, onEdit }: PropertyDetailModalProps) {
-  // Format price with commas
-  const formattedPrice = new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    maximumFractionDigits: 0,
-  }).format(property.price);
+  // Format price to display in SOL
+  const formattedPrice = property.price > 10000 
+    ? `${(property.price / LAMPORTS_PER_SOL).toFixed(2)} SOL` 
+    : `${property.price.toFixed(2)} SOL`;
 
   // Format dates
   const createdDate = new Date(property.created_at).toLocaleDateString('en-US', {
@@ -42,9 +41,9 @@ export function PropertyDetailModal({ property, isOpen, onClose, onMakeOffer, is
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="text-2xl">{property.location}</DialogTitle>
+      <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto p-4 sm:p-6">
+        <DialogHeader className="mb-4">
+          <DialogTitle className="text-xl sm:text-2xl">{property.location}</DialogTitle>
           <div className="flex items-center space-x-2 mt-1">
             <MapPinIcon className="h-4 w-4 text-gray-500" />
             <span className="text-gray-500 text-sm">{property.location}</span>
@@ -80,9 +79,9 @@ export function PropertyDetailModal({ property, isOpen, onClose, onMakeOffer, is
           </div>
 
           {/* Right column - Details */}
-          <div className="space-y-6">
+          <div className="space-y-4 sm:space-y-6">
             <div>
-              <h3 className="text-xl font-bold">{formattedPrice}</h3>
+              <h3 className="text-lg sm:text-xl font-bold">{formattedPrice}</h3>
               <div className="mt-1">
                 <Badge 
                   variant={property.is_active ? "success" : "secondary"}
@@ -93,28 +92,41 @@ export function PropertyDetailModal({ property, isOpen, onClose, onMakeOffer, is
               </div>
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-3 sm:space-y-4">
               <div className="flex items-start space-x-2">
                 <WalletIcon className="h-5 w-5 text-gray-500 mt-0.5" />
-                <div>
+                <div className="flex-grow">
                   <h4 className="font-medium">Owner</h4>
-                  <p className="text-sm font-mono">{formatWalletAddress(property.owner.toString())}</p>
+                  <div className="relative w-full bg-gray-50 rounded p-2 mt-1">
+                    <p className="text-xs font-mono overflow-hidden text-ellipsis break-all pr-6">
+                      {property.owner.toString()}
+                    </p>
+                    <button 
+                      className="absolute right-2 top-2 text-gray-500 hover:text-gray-700"
+                      onClick={() => window.open(`https://explorer.solana.com/address/${property.owner.toString()}`, '_blank')}
+                      title="View on Explorer"
+                    >
+                      <ExternalLink className="h-3 w-3" />
+                    </button>
+                  </div>
                 </div>
               </div>
 
               <div className="flex items-start space-x-2">
                 <HomeIcon className="h-5 w-5 text-gray-500 mt-0.5" />
-                <div>
+                <div className="flex-grow">
                   <h4 className="font-medium">Property ID</h4>
-                  <p className="text-sm font-mono">{property.property_id}</p>
+                  <div className="bg-gray-50 rounded p-2 mt-1">
+                    <p className="text-xs font-mono">{property.property_id}</p>
+                  </div>
                 </div>
               </div>
 
               <div className="flex items-start space-x-2">
                 <CalendarIcon className="h-5 w-5 text-gray-500 mt-0.5" />
-                <div>
+                <div className="flex-grow">
                   <h4 className="font-medium">Listed on</h4>
-                  <p className="text-sm">{createdDate}</p>
+                  <p className="text-sm mt-1">{createdDate}</p>
                 </div>
               </div>
             </div>
@@ -130,6 +142,21 @@ export function PropertyDetailModal({ property, isOpen, onClose, onMakeOffer, is
                   <span className="text-sm text-gray-500">Mint Address</span>
                   <span className="text-sm font-mono">{formatWalletAddress(property.nft_mint.toString())}</span>
                 </div>
+                <div className="flex flex-col">
+                  <span className="text-sm text-gray-500 mb-1">NFT Metadata</span>
+                  <div className="relative w-full bg-gray-50 rounded p-2 mt-1">
+                    <p className="text-xs font-mono text-blue-600 break-all pr-6">
+                      {property.metadata_uri}
+                    </p>
+                    <button 
+                      className="absolute right-2 top-2 text-gray-500 hover:text-gray-700"
+                      onClick={() => window.open(property.metadata_uri, '_blank')}
+                      title="Open in new tab"
+                    >
+                      <ExternalLink className="h-3 w-3" />
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -139,7 +166,7 @@ export function PropertyDetailModal({ property, isOpen, onClose, onMakeOffer, is
           {!isOwner && property.is_active && (
             <Button 
               onClick={onMakeOffer}
-              className="sm:flex-1 bg-amber-500 hover:bg-amber-600"
+              className="w-full sm:flex-1 bg-amber-500 hover:bg-amber-600"
             >
               Make an Offer
             </Button>
@@ -148,7 +175,7 @@ export function PropertyDetailModal({ property, isOpen, onClose, onMakeOffer, is
           {isOwner && (
             <Button 
               variant="outline" 
-              className="sm:flex-1 border-blue-500 text-blue-600 hover:bg-blue-50"
+              className="w-full sm:flex-1 border-blue-500 text-blue-600 hover:bg-blue-50"
               onClick={onEdit}
             >
               <Pencil className="h-4 w-4 mr-2" />
@@ -158,7 +185,7 @@ export function PropertyDetailModal({ property, isOpen, onClose, onMakeOffer, is
           
           <Button 
             variant="outline" 
-            className="sm:flex-1"
+            className="w-full sm:flex-1"
             onClick={() => window.open(`https://explorer.solana.com/address/${property.nft_mint.toString()}`, '_blank')}
           >
             <ExternalLink className="h-4 w-4 mr-2" />
@@ -168,7 +195,7 @@ export function PropertyDetailModal({ property, isOpen, onClose, onMakeOffer, is
           <Button 
             variant="secondary" 
             onClick={onClose}
-            className="sm:flex-1"
+            className="w-full sm:flex-1"
           >
             Close
           </Button>

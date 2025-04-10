@@ -38,6 +38,8 @@ diesel::table! {
         is_active -> Bool,
         created_at -> Timestamp,
         updated_at -> Timestamp,
+        nft_mint_address -> Varchar,
+        nft_token_account -> Varchar,
     }
 }
 

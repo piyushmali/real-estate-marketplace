@@ -2,15 +2,30 @@ import { useProperties } from "@/context/PropertyContext";
 import { PropertyCard } from "@/components/PropertyCard";
 import { useAuth } from "@/hooks/useAuth";
 import { useWallet } from "@/hooks/useWallet";
+import { useEffect } from "react";
 
 export default function MyProperties() {
-  const { properties, isLoading } = useProperties();
+  const { properties, isLoading, getProperties } = useProperties();
   const { connected, publicKey } = useWallet();
   
-  // Filter properties owned by the current user
-  const myProperties = publicKey 
-    ? properties.filter(p => p.owner.toString() === publicKey)
+  // Fetch properties when component mounts
+  useEffect(() => {
+    getProperties();
+  }, [getProperties]);
+  
+  // Fix: Filter properties owned by the current user (using string comparison)
+  const myProperties = connected && publicKey
+    ? properties.filter(p => {
+        const ownerString = typeof p.owner === 'string' 
+          ? p.owner 
+          : p.owner.toString();
+        return ownerString === publicKey;
+      })
     : [];
+  
+  console.log("Current wallet address:", publicKey);
+  console.log("All properties:", properties);
+  console.log("My properties:", myProperties);
   
   if (!connected) {
     return (
