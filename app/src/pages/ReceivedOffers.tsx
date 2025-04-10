@@ -178,7 +178,17 @@ export default function ReceivedOffers() {
   
   // Handle successful offer response
   const handleOfferResponseSuccess = () => {
-    fetchAllOffers(); // Refresh offers list
+    console.log("Offer response processed successfully, forcing offers refresh");
+    setIsLoading(true); // Start loading state
+    // Force a refresh by creating a new timestamp
+    const timestamp = new Date().getTime();
+    console.log(`Refreshing offers with timestamp: ${timestamp}`);
+    
+    // Wait a moment to ensure backend has processed the update
+    setTimeout(() => {
+      fetchAllOffers(); // Refresh offers list with fresh data
+    }, 1000);
+    
     toast({
       title: "Success",
       description: "Your response to the offer has been processed successfully"

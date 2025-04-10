@@ -12,6 +12,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { getAssociatedTokenAddress, createAssociatedTokenAccountInstruction, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { WalletNotConnectedError } from '@solana/wallet-adapter-base';
 import { useTransactionRefresh } from "@/pages/Transactions";
+import axios from "axios";
 
 // Define constants
 const MARKETPLACE_PROGRAM_ID = "E7v7RResymJU5XvvPA9uwxGSEEsdSE6XvaP7BTV2GGoQ";
@@ -627,76 +628,119 @@ export default function ExecuteSaleModal({
           duration: 10000, // longer duration for this notification
         });
         
-        // Wait for confirmation with timeout
-        const confirmationPromise = connection.confirmTransaction(signature);
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error("Confirmation timeout")), 60000)
-        );
+        // Wait for confirmation with timeout and retry
+        let confirmed = false;
+        let retries = 3;
         
-        // Use Promise.race to implement timeout
-        const confirmation = await Promise.race([confirmationPromise, timeoutPromise]);
-        console.log("Transaction confirmed:", confirmation);
+        while (!confirmed && retries > 0) {
+          try {
+            console.log(`Waiting for transaction confirmation (attempts left: ${retries})...`);
+            const confirmation = await connection.confirmTransaction(signature, "confirmed");
+            
+            if (confirmation.value.err) {
+              console.error("Transaction confirmed but with error:", confirmation.value.err);
+              throw new Error(`Transaction error: ${confirmation.value.err}`);
+            }
+            
+            console.log("Transaction confirmed successfully:", confirmation);
+            confirmed = true;
+          } catch (confirmError) {
+            console.warn(`Confirmation attempt failed: ${confirmError.message}`);
+            retries--;
+            if (retries > 0) {
+              // Wait before retrying
+              await new Promise(resolve => setTimeout(resolve, 2000));
+            } else {
+              throw new Error(`Failed to confirm transaction after multiple attempts: ${confirmError.message}`);
+            }
+          }
+        }
         
         // After transaction confirmation:
         setTransactionSignature(signature);
         setTransactionCompleted(true);
         
-        // Ensure transaction context is used to refresh transactions
-        if (transactionContext) {
-          try {
-            await transactionContext.refreshTransactions();
-            console.log("Transaction history refreshed after sale completion");
-          } catch (refreshError) {
-            console.warn("Failed to refresh transaction history:", refreshError);
-          }
-        }
-        
-        // If we get here, the transaction was successful
-        // Step 1: Record the sale in our backend
+        // DATABASE UPDATE SECTION - with more robust error handling
         if (token) {
-          console.log("Recording sale in backend database");
-          try {
-            const saleResult = await recordPropertySale(
-              offer.property_id,
-              offer.seller_wallet,
-              offer.buyer_wallet,
-              offer.amount,
-              signature,
-              token
-            );
-            console.log("Sale recording API result:", saleResult);
-            
-            // Step 2: Update property ownership in the database
+          let dbUpdateSuccess = false;
+          let dbUpdateRetries = 5; // Increase retries
+          
+          // Function to add a delay between retries
+          const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+          
+          while (!dbUpdateSuccess && dbUpdateRetries > 0) {
             try {
+              console.log(`Updating database (attempts left: ${dbUpdateRetries})...`);
+              
+              // Add a small delay before attempting database update to ensure chain is updated
+              await delay(1000);
+              
+              // Step 1: First try to update property ownership directly
               console.log("Updating property ownership in backend");
+              const offerIdString = typeof offer.id === 'string' ? offer.id : offer.id.toString();
+              console.log("Using offer ID:", offerIdString);
+              
               const ownershipResult = await updatePropertyOwnership(
                 offer.property_id,
                 offer.buyer_wallet,
-                offer.id,  // Using the offer ID directly
+                offerIdString,
                 signature,
                 token
               );
               console.log("Property ownership update result:", ownershipResult);
-            } catch (ownershipError) {
-              console.warn("Failed to update property ownership in backend:", ownershipError);
-              // Non-blocking error
+              
+              // Step 2: Then record the sale in our backend
+              console.log("Recording sale in backend database");
+              const saleResult = await recordPropertySale(
+                offer.property_id,
+                offer.seller_wallet,
+                offer.buyer_wallet,
+                offer.amount,
+                signature,
+                token
+              );
+              console.log("Sale recording API result:", saleResult);
+              
+              // If we get here, both updates succeeded
+              dbUpdateSuccess = true;
+            } catch (dbError) {
+              console.error("Database update attempt failed:", dbError);
+              if (axios.isAxiosError(dbError) && dbError.response) {
+                console.error("Server response:", dbError.response.data);
+                console.error("Status code:", dbError.response.status);
+              }
+              dbUpdateRetries--;
+              if (dbUpdateRetries > 0) {
+                // Exponential backoff for retries (1s, 2s, 4s, 8s)
+                const backoffTime = Math.pow(2, 5 - dbUpdateRetries) * 1000;
+                console.log(`Retrying database update in ${backoffTime/1000} seconds...`);
+                await delay(backoffTime);
+              } else {
+                console.error("Failed to update database after multiple attempts:", dbError);
+                toast({
+                  title: "Warning",
+                  description: "Transaction was successful on blockchain but database update failed. The page will refresh to try to sync data.",
+                  variant: "destructive",
+                  duration: 8000,
+                });
+              }
+            }
+          }
+          
+          // Step 3: Explicitly refresh the transaction history
+          try {
+            // Try different methods to refresh transaction data
+            console.log("Refreshing transaction history via context");
+            if (transactionContext) {
+              await transactionContext.refreshTransactions();
             }
             
-            // Step 3: Explicitly refresh the transaction history
-            if (transactionContext) {
-              console.log("Refreshing transaction history");
-              try {
-                await transactionContext.refreshTransactions();
-                console.log("Transaction history refreshed successfully");
-              } catch (refreshError) {
-                console.warn("Failed to refresh transaction history:", refreshError);
-              }
-            } else {
-              console.warn("Transaction context not available, cannot refresh transaction history");
-            }
-          } catch (recordError) {
-            console.warn("Transaction successful but failed to record in backend:", recordError);
-            // Non-blocking error, transaction already succeeded on chain
+            // Also directly call the API to ensure fresh data
+            console.log("Refreshing transaction history via API");
+            await getTransactionHistory(token);
+          } catch (refreshError) {
+            console.warn("Failed to refresh transaction history:", refreshError);
+            // Non-blocking error
           }
         } else {
           console.warn("Not authenticated, skipping backend updates");
@@ -712,8 +756,17 @@ export default function ExecuteSaleModal({
         // Give a moment for the UI to update before closing the modal
         setTimeout(() => {
           // Close the modal and notify parent component
-          onSuccess();
+          console.log("Calling onSuccess to update parent component");
+          onSuccess(); // This should trigger a refresh of offers in the parent
           onClose();
+          
+          // Log the final success message instead of forcing page reload
+          console.log("✅ Transaction completed successfully, UI should update via onSuccess callback");
+          console.log("🔍 If UI is not updating, check offer status in the database");
+          
+          // Comment out the page reload to allow viewing logs
+          // console.log("Forcing page reload to ensure data consistency");
+          // window.location.reload();
         }, 1500);
         
       } catch (sendError) {
