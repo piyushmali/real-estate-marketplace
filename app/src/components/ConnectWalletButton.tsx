@@ -173,7 +173,7 @@ export function ConnectWalletButton() {
     <div className="relative">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <button className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded flex items-center">
+          <button className="bg-[#999799] hover:bg-[#7a797a] text-black font-bold py-2 px-4 rounded-[7px] flex items-center">
             <span>{truncatedAddress}</span>
             <span className="ml-2 h-2 w-2 rounded-full bg-green-500"></span>
           </button>

@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/Badge";
-import { CalendarIcon, HomeIcon, RulerIcon, BedDoubleIcon, ShowerHeadIcon, WalletIcon, MapPinIcon, ExternalLink, Pencil } from "lucide-react";
+import { CalendarIcon, HomeIcon, RulerIcon, BedDoubleIcon, ShowerHeadIcon, WalletIcon, MapPinIcon, ExternalLink, Pencil, ClipboardIcon } from "lucide-react";
 import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 
 interface PropertyDetailModalProps {
@@ -53,15 +53,16 @@ export function PropertyDetailModal({ property, isOpen, onClose, onMakeOffer, is
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Left column - Image */}
           <div className="space-y-4">
-            <div className="aspect-video bg-gray-100 rounded-lg overflow-hidden">
+            <div className="aspect-video bg-gray-100 rounded-lg overflow-hidden flex items-center justify-center">
               <img 
                 src={property.metadata_uri} 
                 alt={property.location} 
-                className="w-full h-full object-cover"
+                className="max-w-full max-h-full object-contain"
                 onError={(e) => {
                   e.currentTarget.onerror = null;
                   e.currentTarget.src = "https://via.placeholder.com/800x600?text=Image+Not+Available";
                 }}
+                loading="lazy"
               />
             </div>
             
@@ -145,16 +146,25 @@ export function PropertyDetailModal({ property, isOpen, onClose, onMakeOffer, is
                 <div className="flex flex-col">
                   <span className="text-sm text-gray-500 mb-1">NFT Metadata</span>
                   <div className="relative w-full bg-gray-50 rounded p-2 mt-1">
-                    <p className="text-xs font-mono text-blue-600 break-all pr-6">
+                    <p className="text-xs font-mono text-blue-600 break-all pr-6 max-h-20 overflow-y-auto">
                       {property.metadata_uri}
                     </p>
-                    <button 
-                      className="absolute right-2 top-2 text-gray-500 hover:text-gray-700"
-                      onClick={() => window.open(property.metadata_uri, '_blank')}
-                      title="Open in new tab"
-                    >
-                      <ExternalLink className="h-3 w-3" />
-                    </button>
+                    <div className="absolute right-2 top-2 flex gap-1">
+                      <button 
+                        className="text-gray-500 hover:text-gray-700"
+                        onClick={() => navigator.clipboard.writeText(property.metadata_uri)}
+                        title="Copy to clipboard"
+                      >
+                        <ClipboardIcon className="h-3 w-3" />
+                      </button>
+                      <button 
+                        className="text-gray-500 hover:text-gray-700"
+                        onClick={() => window.open(property.metadata_uri, '_blank')}
+                        title="Open in new tab"
+                      >
+                        <ExternalLink className="h-3 w-3" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>

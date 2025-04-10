@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/button";
-import { Home, Bed, Bath, ArrowRight, MapPin, Edit, DollarSign, CheckCircle, Hash } from "lucide-react";
+import { Home, Bed, Bath, ArrowRight, MapPin, Edit, DollarSign, CheckCircle, Hash, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useWallet } from "@/hooks/useWallet";
 import { useState, useEffect } from "react";
@@ -214,7 +214,7 @@ export const PropertyCard = ({ property, onUpdateProperty, onMakeOffer, onExecut
             {isOwner ? (
               <Button
                 variant="outline"
-                className="flex items-center gap-1 rounded-md h-10 px-4"
+                className="flex items-center gap-1 rounded-[7px] h-10 px-4"
                 onClick={(e) => {
                   e.stopPropagation();
                   handleOpenUpdateForm();
@@ -226,7 +226,7 @@ export const PropertyCard = ({ property, onUpdateProperty, onMakeOffer, onExecut
             ) : (
               <Button
                 variant="outline"
-                className="flex items-center gap-1 rounded-md h-10 px-4"
+                className="flex items-center gap-1 rounded-[7px] h-10 px-4"
                 onClick={(e) => {
                   e.stopPropagation();
                   onMakeOffer?.(property);
@@ -238,7 +238,7 @@ export const PropertyCard = ({ property, onUpdateProperty, onMakeOffer, onExecut
             )}
             
             <Button 
-              className="flex items-center gap-2 bg-black text-white hover:bg-gray-800 rounded-md h-10 px-4 text-sm font-medium transition-all duration-200 shadow-sm hover:shadow-md"
+              className="flex items-center gap-2 bg-black text-white hover:bg-gray-800 rounded-[7px] h-10 px-4 text-sm font-medium transition-all duration-200 shadow-sm hover:shadow-md"
               onClick={() => setShowDetailsDialog(true)}
             >
               View Details
@@ -257,18 +257,23 @@ export const PropertyCard = ({ property, onUpdateProperty, onMakeOffer, onExecut
           <div className="mt-4">
             <div className="relative w-full h-60 overflow-hidden rounded-lg mb-4">
               {!imageError ? (
-                <img
-                  src={property.metadata_uri}
-                  alt={`Property in ${displayLocation()}`}
-                  className="w-full h-full object-cover"
-                  onError={() => setImageError(true)}
-                />
+                <div className="w-full h-full bg-gray-100 flex items-center justify-center">
+                  <img
+                    src={property.metadata_uri}
+                    alt={`Property in ${displayLocation()}`}
+                    className="w-full h-full object-contain"
+                    onError={() => setImageError(true)}
+                    loading="lazy"
+                  />
+                </div>
               ) : (
-                <img
-                  src={placeholderImage}
-                  alt="Property"
-                  className="w-full h-full object-cover"
-                />
+                <div className="w-full h-full bg-gray-100 flex items-center justify-center">
+                  <img
+                    src={placeholderImage}
+                    alt="Property"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
               )}
               <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4">
                 <Badge className="bg-white/90 text-black font-bold text-md px-3 py-1 rounded-full shadow-md">
@@ -306,11 +311,21 @@ export const PropertyCard = ({ property, onUpdateProperty, onMakeOffer, onExecut
               </div>
               <div>
                 <h3 className="text-md font-semibold text-gray-700">NFT Metadata</h3>
-                <p className="text-sm truncate">
-                  <a href={property.metadata_uri} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                <div className="bg-gray-50 rounded p-2 mt-1 relative">
+                  <p className="text-xs font-mono text-blue-600 overflow-hidden text-ellipsis pr-6 max-h-12 break-all">
                     {property.metadata_uri}
-                  </a>
-                </p>
+                  </p>
+                  <button 
+                    className="absolute right-2 top-2 text-gray-500 hover:text-gray-700"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      window.open(property.metadata_uri, '_blank');
+                    }}
+                    title="Open in new tab"
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                  </button>
+                </div>
               </div>
             </div>
             
@@ -319,7 +334,7 @@ export const PropertyCard = ({ property, onUpdateProperty, onMakeOffer, onExecut
                 <Button 
                   variant="outline" 
                   onClick={handleOpenUpdateForm}
-                  className="flex items-center gap-2"
+                  className="flex items-center gap-2 rounded-[7px]"
                 >
                   <Edit className="size-4" />
                   Update Property
@@ -328,7 +343,7 @@ export const PropertyCard = ({ property, onUpdateProperty, onMakeOffer, onExecut
               {!isOwner && (
                 <Button 
                   onClick={() => onMakeOffer?.(property)}
-                  className="flex items-center gap-2 bg-blue-600 text-white hover:bg-blue-700"
+                  className="flex items-center gap-2 bg-blue-600 text-white hover:bg-blue-700 rounded-lg"
                 >
                   <DollarSign className="size-4" />
                   Make an Offer

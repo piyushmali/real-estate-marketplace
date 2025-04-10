@@ -1,4 +1,4 @@
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { ConnectWalletButton } from "./ConnectWalletButton";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,7 @@ export function Navbar() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const { hasPageButton } = useListPropertyButton();
+  const [location] = useLocation();
 
   // Track window size for responsive behavior
   useEffect(() => {
@@ -63,7 +64,11 @@ export function Navbar() {
               <Link 
                 key={link.path} 
                 href={link.path} 
-                className="text-black hover:text-slate-800 text-xl font-semibold"
+                className={`text-black hover:text-slate-800 text-xl font-semibold py-1 ${
+                  location === link.path 
+                    ? "border-b-2 border-slate-800 text-black" 
+                    : "hover:border-b-2 hover:border-gray-300"
+                }`}
               >
                 {link.name}
               </Link>
@@ -87,7 +92,7 @@ export function Navbar() {
             {/* List Property Button - Only show if no button exists in the page */}
             {!hasPageButton && isAuthenticated && (
               <Link href="/list-property">
-                <Button className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white">
+                <Button className="flex items-center gap-2 rounded-sm bg-blue-600 hover:bg-blue-700 text-white">
                   <Plus className="h-4 w-4" />
                   <span className="hidden md:inline">List Property</span>
                   <span className="md:hidden">List</span>
@@ -129,7 +134,11 @@ export function Navbar() {
                     <SheetClose key={link.path} asChild>
                       <Link 
                         href={link.path}
-                        className="flex items-center py-3 px-8 text-lg font-medium text-blue-400 hover:text-blue-300"
+                        className={`flex items-center py-3 px-8 text-lg font-medium ${
+                          location === link.path 
+                            ? "text-white border-l-4 border-blue-400 bg-blue-800 pl-6" 
+                            : "text-blue-400 hover:text-blue-300"
+                        }`}
                       >
                         {link.name}
                       </Link>
