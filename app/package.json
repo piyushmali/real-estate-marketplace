@@ -5,7 +5,7 @@
   "license": "MIT",
   "scripts": {
     "dev": "vite",
-    "build": "vite build && esbuild server/index.ts --platform=node --external:express --external:drizzle-orm --external:@neondatabase/serverless --external:passport --external:ws --external:zod --bundle --format=esm --outdir=dist",
+    "build": "vite build && esbuild server/index.ts --platform=node --external:'*' --bundle --format=esm --outdir=dist",
     "start": "NODE_ENV=production node dist/index.js",
     "check": "tsc",
     "db:push": "drizzle-kit push"
