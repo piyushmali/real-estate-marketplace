@@ -51,16 +51,6 @@ A decentralized real estate marketplace built on the Solana blockchain, offering
 - Solana Wallet (e.g., Phantom): For testing transactions.
 - **Anchor CLI**: For Solana smart contract deployment.
 
-### Project Structure
-
-solulab-real-estate-marketplace/
-├── app/                    # Frontend React application
-├── backend/                # Actix backend and database logic
-├── programs/               # Solana smart contract (Anchor)
-├── tests/                  # Integration tests for Solana program
-├── README.md               # Project documentation
-└── LICENSE                 # MIT License
-
 
 ### Installation
 
