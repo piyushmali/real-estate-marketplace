@@ -31,8 +31,6 @@ export default function MakeOfferModal({
   const [expirationDays, setExpirationDays] = useState("7");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [simulationLogs, setSimulationLogs] = useState<string[]>([]);
-  const [showLogs, setShowLogs] = useState(false);
   const { toast } = useToast();
 
   // Get auth token from localStorage - same approach as in UpdatePropertyForm
@@ -125,16 +123,14 @@ export default function MakeOfferModal({
     });
   };
 
-  // Display simulation logs in the UI
+  // Display simulation logs in the UI - now does nothing
   const displaySimulationLogs = (logs: string[]) => {
-    setSimulationLogs(logs);
-    setShowLogs(true);
+    // Do nothing - we don't want to display logs
   };
 
-  // Clear simulation logs
+  // Clear simulation logs - now does nothing
   const clearSimulationLogs = () => {
-    setSimulationLogs([]);
-    setShowLogs(false);
+    // Do nothing - we don't need to clear logs
   };
   
   const handleSubmit = async (e: React.FormEvent) => {
@@ -310,24 +306,13 @@ export default function MakeOfferModal({
         // Simulate the transaction
         const simulation = await connection.simulateTransaction(simulationTx);
         
-        // Process logs and display them
-        const extractedLogs: string[] = [];
-        
+        // We no longer need to process logs for display
         if (simulation.value.logs) {
           console.log("=== SIMULATION LOGS ===");
           simulation.value.logs.forEach((log, i) => {
             console.log(`${i+1}: ${log}`);
-            
-            // Extract program logs
-            if (log.includes("Program log:")) {
-              const logMessage = log.split("Program log: ")[1];
-              extractedLogs.push(logMessage);
-            }
           });
           console.log("=== END SIMULATION LOGS ===");
-          
-          // Display logs in UI
-          displaySimulationLogs(extractedLogs);
         }
         
         // Check if simulation was successful
@@ -384,19 +369,25 @@ export default function MakeOfferModal({
         // Serialize the signed transaction
         const serializedTx = signedTx.serialize();
         console.log("Transaction serialized for sending");
+        console.log("🔍 TRANSACTION SUBMISSION: Serialized transaction size:", serializedTx.length, "bytes");
+        console.log("🔍 TRANSACTION SUBMISSION: Preparing to send transaction");
         
         // Send the signed transaction
         console.log("Sending signed transaction...");
         const txSignature = await connection.sendRawTransaction(serializedTx, {
           skipPreflight: false,
-          preflightCommitment: 'confirmed',
-          maxRetries: 3
+          preflightCommitment: 'confirmed'
         });
         console.log("Transaction sent:", txSignature);
+        console.log("🔍 TRANSACTION SUBMISSION: Transaction sent directly to Solana");
+        console.log("🔍 TRANSACTION SUBMISSION: Transaction signature:", txSignature);
         
         // Wait for confirmation
+        console.log("Waiting for transaction confirmation...");
         const confirmation = await connection.confirmTransaction(txSignature, 'confirmed');
         console.log("Transaction confirmed:", confirmation);
+        console.log("🔍 TRANSACTION SUBMISSION: Transaction confirmed on Solana");
+        console.log("🔍 TRANSACTION SUBMISSION: Confirmation details:", JSON.stringify(confirmation));
         
         if (confirmation.value.err) {
           throw new Error("Transaction failed to confirm");
@@ -408,8 +399,11 @@ export default function MakeOfferModal({
           variant: "default"
         });
         
-        onSuccess();
-        onClose();
+        // Close the modal after successful transaction with a small delay
+        setTimeout(() => {
+          onSuccess();
+          onClose();
+        }, 1000);
       } catch (error) {
         console.error("Error processing transaction:", error);
         
@@ -562,35 +556,11 @@ export default function MakeOfferModal({
             <p className="text-xs text-gray-500">Your offer will expire after this many days if not accepted.</p>
           </div>
           
-          {/* Simulation logs display */}
-          {showLogs && simulationLogs.length > 0 && (
-            <div className="mt-4 p-3 bg-gray-50 border rounded-md">
-              <div className="flex justify-between items-center mb-2">
-                <Label className="font-medium text-sm">Transaction Simulation Logs</Label>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={clearSimulationLogs}
-                  className="text-xs h-6 py-0 px-2"
-                >
-                  Clear
-                </Button>
-              </div>
-              <div className="bg-black text-green-400 p-2 rounded-md font-mono text-xs overflow-auto max-h-32">
-                {simulationLogs.map((log, index) => (
-                  <div key={index} className={`text-xs mb-1 ${log.includes("ERROR:") ? 'text-red-400' : log.includes("WARNING:") ? 'text-yellow-400' : ''}`}>
-                    {log}
-                  </div>
-                ))}
-              </div>
-          </div>
-          )}
-          
           <DialogFooter className="pt-4 border-t mt-6">
-            <Button type="button" variant="outline" onClick={onClose} disabled={isSubmitting}>
+            <Button className="rounded-[7px]" type="button" variant="outline" onClick={onClose} disabled={isSubmitting}>
               Cancel
             </Button>
-            <Button type="submit" disabled={isSubmitting}>
+            <Button type="submit" disabled={isSubmitting} className="bg-black text-white hover:bg-gray-800 rounded-[7px]">
               {isSubmitting ? (
                 <div className="flex items-center">
                   <span className="animate-spin mr-2">⟳</span> Submitting...

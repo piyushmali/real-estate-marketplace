@@ -1,4 +1,4 @@
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { ConnectWalletButton } from "./ConnectWalletButton";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,7 @@ export function Navbar() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const { hasPageButton } = useListPropertyButton();
+  const [location] = useLocation();
 
   // Track window size for responsive behavior
   useEffect(() => {
@@ -45,13 +46,15 @@ export function Navbar() {
   ];
   
   return (
-    <nav className="bg-white border-b border-blue-600 shadow-sm px-4 py-2.5 sticky top-0 z-50">
+    <nav className="bg-white border-b border-slate-600 shadow-sm px-4 py-2.5 sticky top-0 z-50">
       <div className="flex flex-wrap justify-between items-center mx-auto max-w-screen-xl">
         <Link href="/" className="flex items-center">
-          <svg className="h-8 w-8 text-blue-700 mr-2" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12 2L1 12h3v8h6v-6h4v6h6v-8h3L12 2z" />
-          </svg>
-          <span className="text-blue-800 font-semibold text-xl">SolEstate</span>
+          <img 
+            src="/solulab.png" 
+            alt="Solulab Logo" 
+            className="h-10 mr-2" 
+          />
+          <span className="text-black font-semibold text-xl">Solulab Real Estate</span>
         </Link>
         
         <div className="flex items-center">
@@ -61,7 +64,11 @@ export function Navbar() {
               <Link 
                 key={link.path} 
                 href={link.path} 
-                className="text-blue-700 hover:text-blue-900 text-xl font-semibold"
+                className={`text-black hover:text-slate-800 text-xl font-semibold py-1 ${
+                  location === link.path 
+                    ? "border-b-2 border-slate-800 text-black" 
+                    : "hover:border-b-2 hover:border-gray-300"
+                }`}
               >
                 {link.name}
               </Link>
@@ -85,7 +92,7 @@ export function Navbar() {
             {/* List Property Button - Only show if no button exists in the page */}
             {!hasPageButton && isAuthenticated && (
               <Link href="/list-property">
-                <Button className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white">
+                <Button className="flex items-center gap-2 rounded-sm bg-blue-600 hover:bg-blue-700 text-white">
                   <Plus className="h-4 w-4" />
                   <span className="hidden md:inline">List Property</span>
                   <span className="md:hidden">List</span>
@@ -113,10 +120,12 @@ export function Navbar() {
                 <SheetHeader className="mb-6 p-4">
                   <SheetTitle className="text-left text-xl font-bold text-white">
                     <div className="flex items-center">
-                      <svg className="h-8 w-8 text-white mr-2" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M12 2L1 12h3v8h6v-6h4v6h6v-8h3L12 2z" />
-                      </svg>
-                      SolEstate
+                      <img 
+                        src="/solulab.png" 
+                        alt="Solulab Logo" 
+                        className="h-8 mr-2" 
+                      />
+                      Solulab Real Estate
                     </div>
                   </SheetTitle>
                 </SheetHeader>
@@ -125,7 +134,11 @@ export function Navbar() {
                     <SheetClose key={link.path} asChild>
                       <Link 
                         href={link.path}
-                        className="flex items-center py-3 px-8 text-lg font-medium text-blue-400 hover:text-blue-300"
+                        className={`flex items-center py-3 px-8 text-lg font-medium ${
+                          location === link.path 
+                            ? "text-white border-l-4 border-blue-400 bg-blue-800 pl-6" 
+                            : "text-blue-400 hover:text-blue-300"
+                        }`}
                       >
                         {link.name}
                       </Link>

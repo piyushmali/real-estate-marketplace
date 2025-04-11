@@ -234,14 +234,20 @@ export default function Transactions() {
                           <TableCell>{txDate}</TableCell>
                           <TableCell>
                             {tx.status === 'confirmed' ? (
-                              <Badge variant="success" className="flex items-center">
-                                <Check className="h-3 w-3 mr-1" />
-                                Confirmed
+                              <Badge 
+                                variant="success" 
+                                className="px-3 py-1 gap-1.5 flex items-center justify-center shadow-sm text-xs font-medium"
+                              >
+                                <Check className="h-3.5 w-3.5" />
+                                <span>Confirmed</span>
                               </Badge>
                             ) : (
-                              <Badge variant="outline" className="flex items-center">
-                                <Clock className="h-3 w-3 mr-1" />
-                                Pending
+                              <Badge 
+                                variant="outline" 
+                                className="px-3 py-1 gap-1.5 flex items-center justify-center border border-amber-300 text-amber-700 bg-amber-50 shadow-sm text-xs font-medium"
+                              >
+                                <Clock className="h-3.5 w-3.5" />
+                                <span>Pending</span>
                               </Badge>
                             )}
                           </TableCell>

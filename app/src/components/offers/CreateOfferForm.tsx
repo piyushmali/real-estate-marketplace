@@ -170,9 +170,15 @@ export const CreateOfferForm = ({
             
             <Button 
               variant="contained" 
-              color="primary" 
               type="submit"
               disabled={isSubmitting || !connected || !isAuthenticated}
+              sx={{ 
+                bgcolor: 'black', 
+                color: 'white',
+                '&:hover': {
+                  bgcolor: '#333'
+                }
+              }}
             >
               {isSubmitting ? (
                 <CircularProgress size={24} color="inherit" />
@@ -185,4 +191,4 @@ export const CreateOfferForm = ({
       </CardContent>
     </Card>
   );
-}; 
+};

@@ -44,18 +44,6 @@ export default function Layout({ children }: LayoutProps) {
         {/* Navbar */}
         <Navbar />
         
-        {/* List Property Button - Only show on My Properties page */}
-        {!hasPageButton && location === "/my-properties" && (
-          <div className="fixed right-4 top-16 z-40 md:right-8">
-            <Link href="/list-property">
-              <Button className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white shadow-md">
-                <Plus className="h-4 w-4" />
-                List Property
-              </Button>
-            </Link>
-          </div>
-        )}
-        
         <main className="flex-1">
           {children}
         </main>
@@ -66,10 +54,12 @@ export default function Layout({ children }: LayoutProps) {
             <div className="flex flex-col md:flex-row justify-between">
               <div className="mb-6 md:mb-0">
                 <div className="flex items-center">
-                  <svg className="h-8 w-8 text-primary" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 2L1 12h3v8h6v-6h4v6h6v-8h3L12 2z" />
-                  </svg>
-                  <span className="ml-2 text-xl font-semibold text-primary">SolEstate</span>
+                  <img 
+                    src="/solulab.png" 
+                    alt="Solulab Logo" 
+                    className="h-8 mr-2" 
+                  />
+                  <span className="ml-2 text-xl font-semibold text-primary">Solulab Real Estate</span>
                 </div>
                 <p className="mt-2 text-sm text-neutral-500">Real estate marketplace powered by Solana blockchain</p>
               </div>
@@ -105,7 +95,7 @@ export default function Layout({ children }: LayoutProps) {
             </div>
             
             <div className="mt-8 border-t border-neutral-200 pt-6 flex flex-col md:flex-row justify-between">
-              <p className="text-sm text-neutral-500">&copy; 2023 SolEstate. All rights reserved.</p>
+              <p className="text-sm text-neutral-500">&copy; 2025 Solulab Real Estate. All rights reserved.</p>
               <div className="mt-4 md:mt-0 flex space-x-6">
                 <a href="#" className="text-neutral-400 hover:text-neutral-500">
                   <span className="sr-only">Twitter</span>

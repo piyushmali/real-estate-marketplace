@@ -51,7 +51,7 @@ export function Modal({ isOpen, onClose, children }: ModalProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
-      <div ref={modalRef} className="animate-fade-in">
+      <div ref={modalRef} className="animate-fade-in rounded-xl overflow-hidden">
         {children}
       </div>
     </div>

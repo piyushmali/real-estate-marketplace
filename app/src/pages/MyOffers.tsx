@@ -11,6 +11,11 @@ import { Link } from "wouter";
 import ExecuteSaleModal from "@/components/ExecuteSaleModal";
 import { useProperties } from "@/context/PropertyContext";
 import axios from 'axios';
+import { Badge } from "@/components/ui/badge";
+import { LAMPORTS_PER_SOL } from "@solana/web3.js";
+import { Loading } from "@/components/Loading";
+import { PropertyDetail } from "@/components/PropertyDetail";
+import { Property } from "@shared/schema";
 
 const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://127.0.0.1:8080';
 
@@ -55,6 +60,8 @@ export default function MyOffers() {
   const [propertyNftMint, setPropertyNftMint] = useState<string>("");
   // Get properties from useProperties hook
   const { properties } = useProperties();
+  const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
+  const [isPropertyDetailOpen, setIsPropertyDetailOpen] = useState(false);
   
   const fetchOffers = async () => {
     setIsLoading(true);
@@ -181,6 +188,31 @@ export default function MyOffers() {
     return property;
   };
   
+  // Handle view property button click
+  const handleViewProperty = (propertyId: string, offer: Offer) => {
+    const foundProperty = properties.find(p => p.property_id === propertyId);
+    if (foundProperty) {
+      setSelectedProperty(foundProperty);
+      setSelectedOffer(offer);
+      setIsPropertyDetailOpen(true);
+    } else {
+      toast({
+        title: "Property Not Found",
+        description: "Property details could not be loaded",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Handle make offer button click (used in PropertyDetail)
+  const handleMakeOffer = () => {
+    // Implementation would go here if needed
+    toast({
+      title: "Make Offer",
+      description: "Make offer functionality would go here"
+    });
+  };
+  
   if (!isAuthenticated) {
     return (
       <div className="max-w-7xl mx-auto py-12 px-4 sm:px-6 lg:px-8 text-center">
@@ -272,15 +304,14 @@ export default function MyOffers() {
                         <TableCell>{formatDate(offer.expiration_time)}</TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
-                            <Link to={`/properties/${offer.property_id}`}>
-                              <Button 
-                                variant="ghost" 
-                                size="sm"
-                              >
-                                <ExternalLink className="h-4 w-4 mr-1" />
-                                View Property
-                              </Button>
-                            </Link>
+                            <Button 
+                              variant="ghost" 
+                              size="sm"
+                              onClick={() => handleViewProperty(offer.property_id, offer)}
+                            >
+                              <ExternalLink className="h-4 w-4 mr-1" />
+                              View Property
+                            </Button>
                             
                             {offer.status.toLowerCase() === 'accepted' && (
                               <Button 
@@ -312,6 +343,17 @@ export default function MyOffers() {
           onClose={() => setIsExecuteSaleModalOpen(false)}
           onSuccess={handleSaleExecutionSuccess}
           propertyNftMint={propertyNftMint}
+        />
+      )}
+      
+      {/* Property Detail Modal */}
+      {selectedProperty && (
+        <PropertyDetail
+          property={selectedProperty}
+          isOpen={isPropertyDetailOpen}
+          onClose={() => setIsPropertyDetailOpen(false)}
+          onMakeOffer={handleMakeOffer}
+          offer={selectedOffer}
         />
       )}
     </>
