@@ -172,20 +172,27 @@ export function PropertyDetailModal({ property, isOpen, onClose, onMakeOffer, is
           </div>
         </div>
 
-        <DialogFooter className="flex flex-col sm:flex-row gap-2 mt-6">
+        <DialogFooter className="flex flex-col sm:flex-row gap-2">
+          <Button 
+            variant="outline" 
+            onClick={onClose}
+            className="w-full sm:flex-1 rounded-[7px]"
+          >
+            Close
+          </Button>
           {!isOwner && property.is_active && (
             <Button 
               onClick={onMakeOffer}
-              className="w-full sm:flex-1 bg-black hover:bg-black"
+              className="w-full sm:flex-1 bg-black text-white hover:bg-gray-800 rounded-[7px]"
             >
-              Make an hello 
+              Make an Offer
             </Button>
           )}
           
           {isOwner && (
             <Button 
               variant="outline" 
-              className="w-full sm:flex-1 border-blue-500 text-blue-600 hover:bg-blue-50"
+              className="w-full sm:flex-1 border-blue-500 text-blue-600 hover:bg-blue-50 rounded-[7px]"
               onClick={onEdit}
             >
               <Pencil className="h-4 w-4 mr-2" />
@@ -194,20 +201,11 @@ export function PropertyDetailModal({ property, isOpen, onClose, onMakeOffer, is
           )}
           
           <Button 
-            variant="outline" 
-            className="w-full sm:flex-1"
-            onClick={() => window.open(`https://explorer.solana.com/address/${property.nft_mint.toString()}`, '_blank')}
-          >
-            <ExternalLink className="h-4 w-4 mr-2" />
-            View on Explorer
-          </Button>
-          
-          <Button 
             variant="secondary" 
-            onClick={onClose}
-            className="w-full sm:flex-1"
+            onClick={() => window.open(`https://explorer.solana.com/address/${property.nft_mint.toString()}`, '_blank')}
+            className="w-full sm:flex-1 rounded-[7px]"
           >
-            Close
+            View on Explorer
           </Button>
         </DialogFooter>
       </DialogContent>

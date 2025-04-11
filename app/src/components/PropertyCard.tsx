@@ -343,7 +343,7 @@ export const PropertyCard = ({ property, onUpdateProperty, onMakeOffer, onExecut
               {!isOwner && (
                 <Button 
                   onClick={() => onMakeOffer?.(property)}
-                  className="flex items-center gap-2 bg-blue-600 text-white hover:bg-blue-700 rounded-lg"
+                  className="flex items-center gap-2 bg-black text-white hover:bg-gray-800 rounded-[7px]"
                 >
                   <DollarSign className="size-4" />
                   Make an Offer
