@@ -59,7 +59,7 @@ export default function Layout({ children }: LayoutProps) {
                     alt="Solulab Logo" 
                     className="h-8 mr-2" 
                   />
-                  <span className="ml-2 text-xl font-semibold text-primary">Solulab Real Estate</span>
+                  <span className="ml-2 text-xl font-semibold text-primary">SoluLab Real Estate</span>
                 </div>
                 <p className="mt-2 text-sm text-neutral-500">Real estate marketplace powered by Solana blockchain</p>
               </div>
@@ -95,7 +95,7 @@ export default function Layout({ children }: LayoutProps) {
             </div>
             
             <div className="mt-8 border-t border-neutral-200 pt-6 flex flex-col md:flex-row justify-between">
-              <p className="text-sm text-neutral-500">&copy; 2025 Solulab Real Estate. All rights reserved.</p>
+              <p className="text-sm text-neutral-500">&copy; 2025 SoluLab Real Estate. All rights reserved.</p>
               <div className="mt-4 md:mt-0 flex space-x-6">
                 <a href="#" className="text-neutral-400 hover:text-neutral-500">
                   <span className="sr-only">Twitter</span>

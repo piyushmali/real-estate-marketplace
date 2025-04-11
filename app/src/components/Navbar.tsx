@@ -54,7 +54,7 @@ export function Navbar() {
             alt="Solulab Logo" 
             className="h-10 mr-2" 
           />
-          <span className="text-black font-semibold text-xl">Solulab Real Estate</span>
+          <span className="text-black font-semibold text-xl">SoluLab Real Estate</span>
         </Link>
         
         <div className="flex items-center">
