@@ -279,31 +279,53 @@ export default function RespondToOfferModal({
         setIsSubmitting(false);
         return;
       }
-      
-      // Verify that the connected wallet is the seller
-      console.log("Comparing Wallets for Offer Response:");
-      console.log("Connected PublicKey:", publicKeyObj.toString());
-      console.log("Offer Seller Wallet:", offer.seller_wallet);
-      
-      // If offer.seller_wallet is undefined, assume the connected wallet is the seller
-      // This covers cases where the seller wallet wasn't saved with the offer
-      if (offer.seller_wallet && publicKeyObj.toString() !== offer.seller_wallet) {
-        setErrors({ wallet: "You must be the property seller to respond to this offer" });
+
+      // Verify property ownership
+      if (!property) {
+        setErrors({ property: "Property details not found" });
         toast({
-          title: "Wallet Error",
-          description: "You must be the property seller to respond to this offer"
+          title: "Property Error",
+          description: "Could not verify property ownership"
         });
         setIsSubmitting(false);
         return;
       }
-      
-      const walletPublicKeyStr = publicKey;
-      console.log("Using wallet public key:", walletPublicKeyStr);
+
+      // Add detailed logging for property ownership verification
+      console.log("Property ownership verification:");
+      console.log("Property owner from API:", property.owner);
+      console.log("Connected wallet:", publicKey);
+      console.log("Property owner type:", typeof property.owner);
+      console.log("Connected wallet type:", typeof publicKey);
+
+      // Normalize the addresses for comparison
+      const normalizedPropertyOwner = property.owner.toLowerCase();
+      const normalizedConnectedWallet = publicKey.toLowerCase();
+
+      console.log("Normalized property owner:", normalizedPropertyOwner);
+      console.log("Normalized connected wallet:", normalizedConnectedWallet);
+
+      // Verify that the connected wallet is the property owner
+      if (normalizedPropertyOwner !== normalizedConnectedWallet) {
+        console.error("Property ownership mismatch:");
+        console.error("Expected owner:", normalizedPropertyOwner);
+        console.error("Actual owner:", normalizedConnectedWallet);
+        
+        setErrors({ wallet: "You must be the property owner to respond to offers" });
+        toast({
+          title: "Ownership Error",
+          description: "You must be the property owner to respond to offers"
+        });
+        setIsSubmitting(false);
+        return;
+      }
+
+      console.log("Property ownership verified successfully");
       
       // Update offer's seller wallet if it's currently unknown
       if (!offer.seller_wallet) {
-        console.log("Setting seller wallet to current wallet:", walletPublicKeyStr);
-        offer.seller_wallet = walletPublicKeyStr;
+        console.log("Setting seller wallet to current wallet:", publicKey);
+        offer.seller_wallet = publicKey;
       }
       
       // Get a fresh blockhash for the transaction
@@ -414,46 +436,41 @@ export default function RespondToOfferModal({
       if (!escrowAccountInfo || escrowAccountInfo.owner.toString() !== TOKEN_PROGRAM_ID) {
         console.log("Escrow NFT account does not exist or is not properly initialized");
         
-        if (accept) {
-          // We need to create the token account for the escrow as part of our transaction
-          console.log("Creating escrow token account as part of the transaction");
+        // Create the token account for the escrow as part of our transaction
+        console.log("Creating escrow token account as part of the transaction");
+        
+        try {
+          // Create the Associated Token Account instruction for the escrow
+          const mintPubkey = new PublicKey(nftMintAddress);
           
-          try {
-            // Create the Associated Token Account instruction for the escrow
-            const mintPubkey = new PublicKey(nftMintAddress);
-            
-            // Create instruction to initialize the escrow's associated token account
-            const createEscrowTokenAccountIx = token.createAssociatedTokenAccountInstruction(
-              publicKeyObj, // payer
-              escrowNftAccount, // associated token account address
-              escrowPDA, // owner (the escrow PDA)
-              mintPubkey // mint
-            );
-            
-            // Add this instruction FIRST to the transaction (before the respond to offer instruction)
-            transaction.add(createEscrowTokenAccountIx);
-            
-            console.log("Added instruction to create escrow token account:", escrowNftAccount.toString());
-            toast({
-              title: "Creating Escrow Account",
-              description: "Creating escrow token account as part of the transaction."
-            });
-          } catch (error) {
-            console.error("Error creating escrow token account instruction:", error);
-            setErrors({ 
-              nft: "Failed to create escrow token account instruction: " + 
-                   (error instanceof Error ? error.message : "Unknown error")
-            });
-            toast({
-              title: "Transaction Error",
-              description: "Failed to create escrow token account instruction."
-            });
-            setIsSubmitting(false);
-            return;
-          }
-        } else {
-          // For reject actions, we don't need the escrow token account
-          console.log("Escrow NFT account not needed for reject action, continuing...");
+          // Create instruction to initialize the escrow's associated token account
+          const createEscrowTokenAccountIx = token.createAssociatedTokenAccountInstruction(
+            publicKeyObj, // payer
+            escrowNftAccount, // associated token account address
+            escrowPDA, // owner (the escrow PDA)
+            mintPubkey // mint
+          );
+          
+          // Add this instruction FIRST to the transaction (before the respond to offer instruction)
+          transaction.add(createEscrowTokenAccountIx);
+          
+          console.log("Added instruction to create escrow token account:", escrowNftAccount.toString());
+          toast({
+            title: "Creating Escrow Account",
+            description: "Creating escrow token account as part of the transaction."
+          });
+        } catch (error) {
+          console.error("Error creating escrow token account instruction:", error);
+          setErrors({ 
+            nft: "Failed to create escrow token account instruction: " + 
+                 (error instanceof Error ? error.message : "Unknown error")
+          });
+          toast({
+            title: "Transaction Error",
+            description: "Failed to create escrow token account instruction."
+          });
+          setIsSubmitting(false);
+          return;
         }
       }
       
@@ -498,7 +515,9 @@ export default function RespondToOfferModal({
             const errJson = JSON.stringify(simulationResult.value.err);
             console.error("Simulation error details:", errJson);
             
-            if (errJson.includes("OfferNotActive")) {
+            if (errJson.includes("NotPropertyOwner")) {
+              errorMessage = "You must be the property owner to respond to this offer.";
+            } else if (errJson.includes("OfferNotActive")) {
               errorMessage = "This offer is no longer active.";
             } else if (errJson.includes("InvalidEscrowAccount")) {
               errorMessage = "Invalid escrow account.";
