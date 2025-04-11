@@ -1,7 +1,7 @@
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Property } from "@shared/schema";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/ui/Badge";
 import { formatWalletAddress, getPropertyStatusBadgeProps } from "@/lib/utils";
 import { ExternalLink } from "lucide-react";
 import { useState } from "react";
