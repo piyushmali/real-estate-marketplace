@@ -678,13 +678,19 @@ export function PropertyForm({ onClose }: PropertyFormProps) {
           });
           
           // Send to backend - use the correct API endpoint with the expected field names
+          console.log("📤 PropertyForm - Submitting transaction to /api/transactions/submit");
+          console.log("Transaction length:", signedTx.serialize().length);
+          
+          const requestData = {
+            // Backend expects serialized_transaction, not signature
+            serialized_transaction: signedTx.serialize().toString('base64'),
+            metadata: propertyMetadataJson
+          };
+          console.log("Request data:", { ...requestData, serialized_transaction: `${requestData.serialized_transaction.substring(0, 20)}...` });
+          
           const response = await axios.post(
             `${API_URL}/api/transactions/submit`,
-            {
-              // Backend expects serialized_transaction, not signature
-              serialized_transaction: signedTx.serialize().toString('base64'),
-              metadata: propertyMetadataJson
-            },
+            requestData,
             {
               headers: {
                 'Content-Type': 'application/json',
@@ -692,6 +698,9 @@ export function PropertyForm({ onClose }: PropertyFormProps) {
               }
             }
           );
+          
+          console.log("✅ PropertyForm - Transaction submitted successfully!");
+          console.log("Response data:", response.data);
           
           console.log("Backend notified successfully:", response.data);
         } catch (backendErr) {
@@ -953,7 +962,7 @@ export function PropertyForm({ onClose }: PropertyFormProps) {
         <button
           type="submit"
           disabled={isSubmitting}
-          className="w-full bg-blue-500 text-white py-2 px-4 rounded-lg hover:bg-blue-600"
+          className="w-full bg-black text-white py-2 px-4 rounded-[7px] hover:bg-slate-800"
         >
           {isSubmitting ? "Listing..." : "List Property"}
         </button>

@@ -1569,7 +1569,7 @@ export function UpdatePropertyForm({ property, onClose, onSuccess }: UpdatePrope
           <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
             Cancel
           </Button>
-          <Button type="submit" disabled={isSubmitting}>
+          <Button type="submit" disabled={isSubmitting} className="bg-black text-white hover:bg-gray-800 rounded-[7px]">
             {isSubmitting ? (
               <div className="flex items-center">
                 <span className="animate-spin mr-2">⟳</span> Updating...

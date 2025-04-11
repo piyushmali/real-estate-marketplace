@@ -548,8 +548,14 @@ export default function RespondToOfferModal({
         console.log("Submitting transaction directly to Solana...");
         try {
           const connection = new Connection(SOLANA_RPC_ENDPOINT, "confirmed");
-          const signature = await connection.sendRawTransaction(signedTransaction.serialize());
+          const serializedTx = signedTransaction.serialize();
+          console.log("🔍 TRANSACTION SUBMISSION: Transaction serialized, size:", serializedTx.length, "bytes");
+          console.log("🔍 TRANSACTION SUBMISSION: Sending transaction directly to Solana");
+          
+          const signature = await connection.sendRawTransaction(serializedTx);
           console.log("Transaction sent to Solana:", signature);
+          console.log("🔍 TRANSACTION SUBMISSION: Transaction sent successfully");
+          console.log("🔍 TRANSACTION SUBMISSION: Transaction signature:", signature);
           
           // Now call the backend API to update the offer status
           const offerResponse = await respondToOffer(
@@ -561,6 +567,7 @@ export default function RespondToOfferModal({
           );
           
           console.log("Offer response API result:", offerResponse);
+          console.log("🔍 TRANSACTION SUBMISSION: Backend notified of transaction");
           
           if (!offerResponse.success) {
             throw new Error(offerResponse.message || "Failed to update offer status");
@@ -1090,4 +1097,4 @@ export default function RespondToOfferModal({
       </DialogContent>
     </Dialog>
   );
-} 
+}

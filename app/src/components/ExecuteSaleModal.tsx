@@ -58,6 +58,8 @@ export default function ExecuteSaleModal({
   const [waitingForBuyer, setWaitingForBuyer] = useState(false);
   const [waitingForSeller, setWaitingForSeller] = useState(false);
   const [partiallySignedTxBase64, setPartiallySignedTxBase64] = useState<string | null>(null);
+  const [simulationLogs, setSimulationLogs] = useState<string[]>([]);
+  const [showLogs, setShowLogs] = useState(false);
   const [isSimulating, setIsSimulating] = useState(false);
   const [isBuyer, setIsBuyer] = useState(false);
   const [isSeller, setIsSeller] = useState(false);
@@ -77,12 +79,8 @@ export default function ExecuteSaleModal({
       setWaitingForBuyer(false);
       setWaitingForSeller(false);
       setPartiallySignedTxBase64(null);
-      setIsSimulating(false);
-      setIsBuyer(false);
-      setIsSeller(false);
-      setProperty(null);
-      setTransactionCompleted(false);
-      setTransactionSignature(null);
+      setSimulationLogs([]);
+      setShowLogs(false);
     }
   }, [visible, propertyNftMint, offer]);
   
@@ -189,6 +187,12 @@ export default function ExecuteSaleModal({
       transactionHistory: transactionHistoryPDA,
       marketplaceAuthority
     };
+  };
+  
+  // Display simulation logs to the user
+  const displaySimulationLogs = (logs: string[]) => {
+    setSimulationLogs(logs);
+    setShowLogs(true);
   };
   
   // Create execute_sale instruction - UPDATED to match test file structure exactly
@@ -527,6 +531,10 @@ export default function ExecuteSaleModal({
   const simulateTransactionBeforeSubmit = async () => {
     try {
       setIsSimulating(true);
+      setSimulationLogs([
+        "Starting simulation...",
+        "Creating test transaction with only SOL transfers"
+      ]);
       
       if (!property) {
         await fetchPropertyDetails();
@@ -535,6 +543,7 @@ export default function ExecuteSaleModal({
       // Create the test transaction
       const transaction = await createTransaction(offer, property);
       if (!transaction) {
+        setSimulationLogs([...simulationLogs, "Failed to create transaction"]);
         return false;
       }
       
@@ -542,10 +551,27 @@ export default function ExecuteSaleModal({
       const connection = new Connection(SOLANA_RPC_ENDPOINT, 'confirmed');
       
       // Simulate the transaction
+      setSimulationLogs([...simulationLogs, "Simulating transaction on Solana"]);
+      
       const result = await connection.simulateTransaction(transaction);
+      
+      // Display the detailed results
+      setSimulationLogs([
+        ...simulationLogs, 
+        `Transaction simulation complete:`,
+        `Success: ${result.value.err ? 'No' : 'Yes'}`,
+        `Error: ${result.value.err ? JSON.stringify(result.value.err) : 'None'}`,
+        `Log messages:`,
+        ...(result.value.logs || ["No logs available"]).map(log => `   ${log}`)
+      ]);
       
       return !result.value.err;
     } catch (error) {
+      setSimulationLogs([
+        ...simulationLogs,
+        `Simulation error: ${error.message || "Unknown error"}`,
+        `Stack: ${error.stack || "No stack available"}`
+      ]);
       return false;
     } finally {
       setIsSimulating(false);
@@ -727,12 +753,21 @@ export default function ExecuteSaleModal({
           duration: 5000,
         });
         
-        // Close the modal automatically after transaction completes
+        // Give a moment for the UI to update before closing the modal
         setTimeout(() => {
-          // Call onSuccess to update parent component
-          onSuccess();
+          // Close the modal and notify parent component
+          console.log("Calling onSuccess to update parent component");
+          onSuccess(); // This should trigger a refresh of offers in the parent
           onClose();
-        }, 1000);
+          
+          // Log the final success message instead of forcing page reload
+          console.log("✅ Transaction completed successfully, UI should update via onSuccess callback");
+          console.log("🔍 If UI is not updating, check offer status in the database");
+          
+          // Comment out the page reload to allow viewing logs
+          // console.log("Forcing page reload to ensure data consistency");
+          // window.location.reload();
+        }, 1500);
         
       } catch (sendError) {
         console.error("Error sending or confirming transaction:", sendError);
@@ -943,6 +978,7 @@ export default function ExecuteSaleModal({
     if (visible) {
       console.log("Modal opened, initializing data");
       // Reset states
+      setSimulationLogs([]);
       setIsSimulating(false);
       setIsSubmitting(false);
       
@@ -983,42 +1019,187 @@ export default function ExecuteSaleModal({
   
   return (
     <Dialog open={visible} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-md md:max-w-2xl bg-white">
+      <DialogContent className="sm:max-w-md md:max-w-2xl max-h-[90vh] overflow-y-auto bg-white dark:bg-gray-900">
+        <div className="absolute inset-0 bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950 dark:to-purple-950 rounded-md opacity-70 -z-10" />
         <DialogHeader>
           <DialogTitle className="text-xl font-bold">Execute Property Sale</DialogTitle>
+          <DialogDescription>
+            {isBuyer && (
+              <div className="text-sm mb-4 bg-blue-50 dark:bg-blue-950 p-4 rounded-lg border border-blue-200 dark:border-blue-800">
+                <div className="font-medium mb-1">About this transaction</div>
+                <p className="mb-2">This will execute the sale of the property NFT for {(offer.amount / LAMPORTS_PER_SOL).toFixed(2)} SOL.</p>
+                <p>The transaction will:</p>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>Transfer {(offer.amount / LAMPORTS_PER_SOL).toFixed(2)} SOL from your wallet to the seller</li>
+                  <li>Transfer the property NFT from the seller to you</li>
+                  <li>Update the property ownership records</li>
+                  <li>Create a transaction history record</li>
+                </ul>
+                <p className="mt-2 text-xs text-blue-700 dark:text-blue-400">All of this happens in a single atomic transaction - either all operations succeed or none do.</p>
+              </div>
+            )}
+            
+            {isSeller && !waitingForBuyer && (
+              <div className="text-sm mb-4 bg-blue-50 dark:bg-blue-950 p-4 rounded-lg border border-blue-200 dark:border-blue-800">
+                <div className="font-medium mb-1">About this transaction</div>
+                <p>You're the seller of this property. Review the offer and sign the transaction to proceed with the sale.</p>
+              </div>
+            )}
+            
+            {waitingForBuyer && (
+              <div className="text-sm mb-4 bg-amber-50 dark:bg-amber-950 p-4 rounded-lg border border-amber-200 dark:border-amber-800">
+                <div className="font-medium">Waiting for buyer signature</div>
+                <p>You've signed this transaction. Now the buyer needs to sign it to complete the purchase.</p>
+              </div>
+            )}
+            
+            {waitingForSeller && (
+              <div className="text-sm mb-4 bg-amber-50 dark:bg-amber-950 p-4 rounded-lg border border-amber-200 dark:border-amber-800">
+                <div className="font-medium">Waiting for seller signature</div>
+                <p>The seller needs to sign this transaction before you can complete the purchase.</p>
+              </div>
+            )}
+            
+            {!connected && (
+              <div className="text-sm mb-4 bg-red-50 dark:bg-red-950 p-4 rounded-lg border border-red-200 dark:border-red-800">
+                <div className="font-medium">Wallet not connected</div>
+                <p>Please connect your wallet to proceed with this transaction.</p>
+              </div>
+            )}
+            
+            <div className="space-y-2 mt-4 bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
+              <div className="flex justify-between">
+                <span className="text-gray-500 dark:text-gray-400">Property ID:</span>
+                <span className="font-medium">{offer.property_id}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500 dark:text-gray-400">Price:</span>
+                <span className="font-medium">{(offer.amount < 0.1 * LAMPORTS_PER_SOL ? 
+                  offer.amount : 
+                  offer.amount / LAMPORTS_PER_SOL).toFixed(4)} SOL</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500 dark:text-gray-400">Buyer:</span>
+                <span className="font-mono text-xs truncate max-w-[200px]">{offer.buyer_wallet}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500 dark:text-gray-400">Seller:</span>
+                <span className="font-mono text-xs truncate max-w-[200px]">{offer.seller_wallet}</span>
+              </div>
+            </div>
+          </DialogDescription>
         </DialogHeader>
         
-        <div className="space-y-2 mt-4 bg-white p-4 rounded-lg">
-          <div className="flex justify-between">
-            <span className="text-gray-500">Property ID:</span>
-            <span className="font-medium">{offer.property_id}</span>
+        {/* Debugging UI sections - only shown in development mode */}
+        {process.env.NODE_ENV === 'development' && (
+          <div className="mt-4 space-y-2">
+            {/* User role detection */}
+            <div className="text-xs bg-slate-100 dark:bg-slate-800 p-3 rounded">
+              <h4 className="font-bold mb-1">User Role Detection:</h4>
+              <div className="grid grid-cols-2 gap-1">
+                <div>Wallet connected:</div>
+                <div>{connected ? '✅' : '❌'}</div>
+                <div>Detected as buyer:</div>
+                <div>{isBuyer ? '✅' : '❌'}</div>
+                <div>Detected as seller:</div>
+                <div>{isSeller ? '✅' : '❌'}</div>
+                <div>Buyer wallet match:</div>
+                <div>{walletAddress === offer.buyer_wallet ? '✅' : '❌'}</div>
+                <div>Seller wallet match:</div>
+                <div>{walletAddress === offer.seller_wallet ? '✅' : '❌'}</div>
+              </div>
+            </div>
+              
+            {/* Status messages */}
+            <div className="text-xs bg-slate-100 dark:bg-slate-800 p-3 rounded">
+              <h4 className="font-bold mb-1">Status:</h4>
+              <div className="grid grid-cols-2 gap-1">
+                <div>Waiting for buyer:</div>
+                <div>{waitingForBuyer ? '✅' : '❌'}</div>
+                <div>Waiting for seller:</div>
+                <div>{waitingForSeller ? '✅' : '❌'}</div>
+                <div>Partially signed:</div>
+                <div>{partiallySignedTxBase64 ? '✅' : '❌'}</div>
+              </div>
+            </div>
+              
+            {/* Test flow instructions */}
+            <div className="text-xs bg-slate-100 dark:bg-slate-800 p-3 rounded">
+              <h4 className="font-bold mb-1">Test flow instructions:</h4>
+              <ol className="list-decimal pl-5 space-y-1">
+                <li>Connect first as seller, click "Start Sale"</li>
+                <li>Then connect as buyer, click "Execute Sale"</li>
+                <li>Watch console logs for debugging info</li>
+              </ol>
+            </div>
+              
+            {/* Action debug */}
+            <div className="text-xs bg-slate-100 dark:bg-slate-800 p-3 rounded">
+              <h4 className="font-bold mb-1">Action Debug:</h4>
+              <div className="grid grid-cols-2 gap-1">
+                <div>Current action:</div>
+                <div>{getUserAction()}</div>
+                <div>Button visible:</div>
+                <div>{getUserAction() !== 'none' ? '✅' : '❌'}</div>
+              </div>
+            </div>
           </div>
-          <div className="flex justify-between">
-            <span className="text-gray-500">Price:</span>
-            <span className="font-medium">{(offer.amount / LAMPORTS_PER_SOL).toFixed(2)} SOL</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-500">Buyer:</span>
-            <span className="font-mono text-xs truncate max-w-[200px]">{offer.buyer_wallet}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-500">Seller:</span>
-            <span className="font-mono text-xs truncate max-w-[200px]">{offer.seller_wallet}</span>
-          </div>
-        </div>
-        
-        <DialogFooter className="mt-6 flex justify-end space-x-2">
-          <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
-            Cancel
-          </Button>
+        )}
           
-          <Button 
-            onClick={handleBuyerComplete}
-            disabled={isSubmitting}
-            className="bg-green-600 hover:bg-green-700 text-white"
-          >
-            {isSubmitting ? 'Processing...' : 'Execute Sale'}
-          </Button>
+        {showLogs && (
+          <div className="mt-4 max-h-60 overflow-y-auto p-3 text-xs font-mono bg-black text-green-400 rounded">
+            {simulationLogs.map((log, i) => (
+              <div key={i}>{log}</div>
+            ))}
+          </div>
+        )}
+          
+        <DialogFooter className="mt-6 flex items-center">
+          <div className="flex-1">
+            <Button 
+              variant="outline" 
+              onClick={simulateTransactionBeforeSubmit}
+              disabled={isSimulating || isSubmitting}
+              className={getUserAction() !== "none" ? "block" : "hidden"}
+            >
+              {isSimulating ? 'Simulating...' : 'Simulate Transaction'}
+            </Button>
+          </div>
+          
+          <div className="flex space-x-2">
+            <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
+              Cancel
+            </Button>
+          
+            {getUserAction() === "sign" && (
+              <Button 
+                onClick={handleSellerSign}
+                disabled={isSubmitting}
+                className="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white"
+              >
+                {isSubmitting ? 'Processing...' : 'Start Sale'}
+              </Button>
+            )}
+            
+            {getUserAction() === "complete" && (
+              <Button 
+                onClick={handleBuyerComplete}
+                disabled={isSubmitting}
+                className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white"
+              >
+                {isSubmitting ? 'Processing...' : 'Execute Sale'}
+              </Button>
+            )}
+            
+            {getUserAction() === "waiting" && (
+              <Button 
+                disabled
+                className="bg-amber-500 text-white"
+              >
+                {isBuyer ? 'Waiting for Seller' : 'Waiting for Buyer'}
+              </Button>
+            )}
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

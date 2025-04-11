@@ -45,7 +45,7 @@ function MarketplaceContent() {
           onClick={handleOpenPropertyForm}
           disabled={!isAuthenticated}
           className={`
-            px-4 py-2 rounded-md flex items-center space-x-2
+            px-4 py-2 rounded-xl flex items-center space-x-2
             ${isAuthenticated
               ? 'bg-[#434343] hover:bg-black text-white'
               : 'bg-gray-300 cursor-not-allowed text-gray-500'}

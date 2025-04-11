@@ -15,12 +15,19 @@ export const simulateTransaction = async (
       ? transaction 
       : Buffer.from(transaction).toString('base64');
 
+    console.log('🔍 Simulating transaction');
+    console.log('Transaction length:', typeof transaction === 'string' ? transaction.length : transaction.byteLength);
+    console.log('Program ID:', PROGRAM_ID.toString());
+    
+    const requestData = {
+      transaction: transactionBase64,
+      program_id: PROGRAM_ID.toString()
+    };
+    console.log('Request data:', { ...requestData, transaction: `${transactionBase64.substring(0, 20)}...` });
+
     const response = await axios.post(
       `${API_URL}/api/transactions/simulate`,
-      {
-        transaction: transactionBase64,
-        program_id: PROGRAM_ID.toString()
-      },
+      requestData,
       {
         headers: {
           'Content-Type': 'application/json',
@@ -28,9 +35,17 @@ export const simulateTransaction = async (
         },
       }
     );
+    
+    console.log('✅ Transaction simulation completed');
+    console.log('Simulation result:', response.data);
+    
     return response.data;
   } catch (error) {
-    console.error('Error simulating transaction:', error);
+    console.error('❌ Error simulating transaction:', error);
+    if (axios.isAxiosError(error) && error.response) {
+      console.error('Server response:', error.response.data);
+      console.error('Status code:', error.response.status);
+    }
     throw error;
   }
 };
@@ -44,12 +59,22 @@ export const submitTransaction = async (
       ? transaction 
       : Buffer.from(transaction).toString('base64');
 
+    console.log('📤 Submitting transaction to /api/transactions/submit');
+    console.log('Transaction length:', typeof transaction === 'string' ? transaction.length : transaction.byteLength);
+    console.log('Program ID:', PROGRAM_ID.toString());
+    console.log('🔍 TRANSACTION SUBMISSION: Serialized transaction being sent to backend');
+    console.log('🔍 TRANSACTION SUBMISSION: Transaction type:', typeof transaction);
+    console.log('🔍 TRANSACTION SUBMISSION: Transaction format:', typeof transaction === 'string' ? 'base64 string' : 'Uint8Array');
+    
+    const requestData = {
+      transaction: transactionBase64,
+      program_id: PROGRAM_ID.toString()
+    };
+    console.log('Request data:', { ...requestData, transaction: `${transactionBase64.substring(0, 20)}...` });
+
     const response = await axios.post(
       `${API_URL}/api/transactions/submit`,
-      {
-        transaction: transactionBase64,
-        program_id: PROGRAM_ID.toString()
-      },
+      requestData,
       {
         headers: {
           'Content-Type': 'application/json',
@@ -57,9 +82,24 @@ export const submitTransaction = async (
         },
       }
     );
+    
+    console.log('✅ Transaction submitted successfully!');
+    console.log('Response data:', response.data);
+    console.log('Transaction signature:', response.data.signature);
+    console.log('🔍 TRANSACTION SUBMISSION: Backend successfully processed the transaction');
+    
     return response.data.signature;
   } catch (error) {
-    console.error('Error submitting transaction:', error);
+    console.error('❌ Error submitting transaction:', error);
+    console.error('🔍 TRANSACTION SUBMISSION: Failed to submit transaction through backend');
+    if (axios.isAxiosError(error) && error.response) {
+      console.error('Server response:', error.response.data);
+      console.error('Status code:', error.response.status);
+      console.error('🔍 TRANSACTION SUBMISSION: Backend error details:', {
+        status: error.response.status,
+        data: error.response.data
+      });
+    }
     throw error;
   }
 };
@@ -73,12 +113,22 @@ export const submitTransactionNoUpdate = async (
       ? transaction 
       : Buffer.from(transaction).toString('base64');
 
+    console.log('📤 Submitting transaction to /api/transactions/submit-no-update');
+    console.log('Transaction length:', typeof transaction === 'string' ? transaction.length : transaction.byteLength);
+    console.log('Program ID:', PROGRAM_ID.toString());
+    console.log('🔍 TRANSACTION SUBMISSION: Serialized transaction being sent to backend (no update)');
+    console.log('🔍 TRANSACTION SUBMISSION: Transaction type:', typeof transaction);
+    console.log('🔍 TRANSACTION SUBMISSION: Transaction format:', typeof transaction === 'string' ? 'base64 string' : 'Uint8Array');
+    
+    const requestData = {
+      transaction: transactionBase64,
+      program_id: PROGRAM_ID.toString()
+    };
+    console.log('Request data:', { ...requestData, transaction: `${transactionBase64.substring(0, 20)}...` });
+
     const response = await axios.post(
       `${API_URL}/api/transactions/submit-no-update`,
-      {
-        transaction: transactionBase64,
-        program_id: PROGRAM_ID.toString()
-      },
+      requestData,
       {
         headers: {
           'Content-Type': 'application/json',
@@ -86,9 +136,24 @@ export const submitTransactionNoUpdate = async (
         },
       }
     );
+    
+    console.log('✅ Transaction submitted successfully (no update)!');
+    console.log('Response data:', response.data);
+    console.log('Transaction signature:', response.data.signature);
+    console.log('🔍 TRANSACTION SUBMISSION: Backend successfully processed the transaction (no update)');
+    
     return response.data.signature;
   } catch (error) {
-    console.error('Error submitting transaction:', error);
+    console.error('❌ Error submitting transaction (no update):', error);
+    console.error('🔍 TRANSACTION SUBMISSION: Failed to submit transaction through backend (no update)');
+    if (axios.isAxiosError(error) && error.response) {
+      console.error('Server response:', error.response.data);
+      console.error('Status code:', error.response.status);
+      console.error('🔍 TRANSACTION SUBMISSION: Backend error details (no update):', {
+        status: error.response.status,
+        data: error.response.data
+      });
+    }
     throw error;
   }
 };
@@ -443,4 +508,4 @@ export const updatePropertyOwnership = async (
     
     throw error;
   }
-}; 
+};

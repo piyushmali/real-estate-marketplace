@@ -207,7 +207,7 @@ export function UpdatePropertyModal({ property, isOpen, onClose }: UpdatePropert
             <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="submit" disabled={isSubmitting}>
+            <Button type="submit" disabled={isSubmitting} className="bg-black text-white hover:bg-gray-800 rounded-[7px]">
               {isSubmitting ? "Updating..." : "Update Property"}
             </Button>
           </DialogFooter>
@@ -215,4 +215,4 @@ export function UpdatePropertyModal({ property, isOpen, onClose }: UpdatePropert
       </DialogContent>
     </Dialog>
   );
-} 
+}

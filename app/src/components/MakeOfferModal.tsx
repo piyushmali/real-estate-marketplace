@@ -369,19 +369,25 @@ export default function MakeOfferModal({
         // Serialize the signed transaction
         const serializedTx = signedTx.serialize();
         console.log("Transaction serialized for sending");
+        console.log("🔍 TRANSACTION SUBMISSION: Serialized transaction size:", serializedTx.length, "bytes");
+        console.log("🔍 TRANSACTION SUBMISSION: Preparing to send transaction");
         
         // Send the signed transaction
         console.log("Sending signed transaction...");
         const txSignature = await connection.sendRawTransaction(serializedTx, {
           skipPreflight: false,
-          preflightCommitment: 'confirmed',
-          maxRetries: 3
+          preflightCommitment: 'confirmed'
         });
         console.log("Transaction sent:", txSignature);
+        console.log("🔍 TRANSACTION SUBMISSION: Transaction sent directly to Solana");
+        console.log("🔍 TRANSACTION SUBMISSION: Transaction signature:", txSignature);
         
         // Wait for confirmation
+        console.log("Waiting for transaction confirmation...");
         const confirmation = await connection.confirmTransaction(txSignature, 'confirmed');
         console.log("Transaction confirmed:", confirmation);
+        console.log("🔍 TRANSACTION SUBMISSION: Transaction confirmed on Solana");
+        console.log("🔍 TRANSACTION SUBMISSION: Confirmation details:", JSON.stringify(confirmation));
         
         if (confirmation.value.err) {
           throw new Error("Transaction failed to confirm");
@@ -551,10 +557,10 @@ export default function MakeOfferModal({
           </div>
           
           <DialogFooter className="pt-4 border-t mt-6">
-            <Button type="button" variant="outline" onClick={onClose} disabled={isSubmitting}>
+            <Button className="rounded-[7px]" type="button" variant="outline" onClick={onClose} disabled={isSubmitting}>
               Cancel
             </Button>
-            <Button type="submit" disabled={isSubmitting}>
+            <Button type="submit" disabled={isSubmitting} className="bg-black text-white hover:bg-gray-800 rounded-[7px]">
               {isSubmitting ? (
                 <div className="flex items-center">
                   <span className="animate-spin mr-2">⟳</span> Submitting...

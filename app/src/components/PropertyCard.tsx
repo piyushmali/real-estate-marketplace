@@ -232,7 +232,7 @@ export const PropertyCard = ({ property, onUpdateProperty, onMakeOffer, onExecut
                   onMakeOffer?.(property);
                 }}
               >
-                <DollarSign className="h-4 w-4" />
+                <DollarSign className="h-4 w-4 " />
                 Make Offer
               </Button>
             )}

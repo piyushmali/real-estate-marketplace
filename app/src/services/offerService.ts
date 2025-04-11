@@ -21,15 +21,18 @@ export const createOffer = async (
     
     console.log(`Amount in lamports: ${amountInLamports}`);
     
+    const requestData = {
+      property_id: propertyId,
+      amount: amountInLamports,
+      expiration_days: expirationDays,
+      buyer_wallet: buyerWallet,
+      program_id: PROGRAM_ID.toString()
+    };
+    console.log('📤 Creating offer with data:', requestData);
+    
     const response = await axios.post(
       `${API_URL}/api/offers`,
-      {
-        property_id: propertyId,
-        amount: amountInLamports,
-        expiration_days: expirationDays,
-        buyer_wallet: buyerWallet,
-        program_id: PROGRAM_ID.toString()
-      },
+      requestData,
       {
         headers: {
           'Content-Type': 'application/json',
@@ -37,6 +40,8 @@ export const createOffer = async (
         },
       }
     );
+    
+    console.log('✅ Offer created successfully:', response.data);
     return response.data.offer;
   } catch (error) {
     console.error('Error creating offer:', error);
@@ -70,6 +75,8 @@ export const getUserOffers = async (token: string): Promise<Offer[]> => {
   try {
     console.log("Fetching user offers with token:", token ? "Token exists" : "No token");
     
+    console.log('🔍 Fetching user offers');
+    
     const response = await axios.get(
       `${API_URL}/api/offers/my-offers`,
       {
@@ -78,6 +85,8 @@ export const getUserOffers = async (token: string): Promise<Offer[]> => {
         },
       }
     );
+    
+    console.log('✅ User offers fetched:', response.data);
     
     if (response.data && response.data.success) {
       return response.data.offers || [];
@@ -102,14 +111,17 @@ export const respondToOffer = async (
   try {
     console.log(`Responding to offer ${offerId} with status: ${status}`);
     
+    const requestData = {
+      status,
+      transaction_signature: transactionSignature,
+      seller_wallet: sellerWallet,
+      program_id: PROGRAM_ID.toString()
+    };
+    console.log(`📤 Responding to offer ${offerId} with data:`, requestData);
+    
     const response = await axios.post(
       `${API_URL}/api/offers/${offerId}/respond`,
-      {
-        status,
-        transaction_signature: transactionSignature,
-        seller_wallet: sellerWallet,
-        program_id: PROGRAM_ID.toString()
-      },
+      requestData,
       {
         headers: {
           'Content-Type': 'application/json',
@@ -117,6 +129,8 @@ export const respondToOffer = async (
         },
       }
     );
+    
+    console.log('✅ Offer response submitted successfully:', response.data);
     
     return response.data;
   } catch (error) {
@@ -130,6 +144,8 @@ export const getPropertyOffers = async (propertyId: string, token: string): Prom
   try {
     console.log(`Fetching offers for property: ${propertyId}`);
     
+    console.log(`🔍 Fetching offers for property: ${propertyId}`);
+    
     const response = await axios.get(
       `${API_URL}/api/properties/${propertyId}/offers`,
       {
@@ -138,6 +154,8 @@ export const getPropertyOffers = async (propertyId: string, token: string): Prom
         },
       }
     );
+    
+    console.log('✅ Property offers fetched:', response.data);
     
     if (response.data && response.data.success) {
       return response.data.offers || [];
@@ -162,14 +180,17 @@ export const createEscrowTokenAccount = async (
   try {
     console.log(`Creating escrow token account for offer: ${offerId}, property: ${propertyId}, NFT: ${nftMintAddress}, buyer: ${buyerWallet}`);
     
+    const requestData = {
+      offer_id: offerId,
+      property_id: propertyId,
+      nft_mint_address: nftMintAddress,
+      buyer_wallet: buyerWallet
+    };
+    console.log(`📤 Creating escrow token account with data:`, requestData);
+    
     const response = await axios.post(
       `${API_URL}/api/offers/create-escrow-account`,
-      {
-        offer_id: offerId,
-        property_id: propertyId,
-        nft_mint_address: nftMintAddress,
-        buyer_wallet: buyerWallet
-      },
+      requestData,
       {
         headers: {
           'Content-Type': 'application/json',
@@ -177,6 +198,8 @@ export const createEscrowTokenAccount = async (
         },
       }
     );
+    
+    console.log('✅ Escrow token account created:', response.data);
     
     if (response.data && response.data.success) {
       return {
@@ -198,4 +221,4 @@ export const createEscrowTokenAccount = async (
       message: error instanceof Error ? error.message : "Unknown error occurred"
     };
   }
-}; 
+};

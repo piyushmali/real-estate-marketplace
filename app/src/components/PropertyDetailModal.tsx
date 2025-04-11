@@ -176,9 +176,9 @@ export function PropertyDetailModal({ property, isOpen, onClose, onMakeOffer, is
           {!isOwner && property.is_active && (
             <Button 
               onClick={onMakeOffer}
-              className="w-full sm:flex-1 bg-amber-500 hover:bg-amber-600"
+              className="w-full sm:flex-1 bg-black hover:bg-black"
             >
-              Make an Offer
+              Make an hello 
             </Button>
           )}
           
